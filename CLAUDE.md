@@ -26,6 +26,7 @@ A kiteboarding spot-finder for one rider in Portland, OR (gift for his 50th). Th
 - `checklist-defaults.json` — default checklist items.
 - `sync/` — settings-sync + push Cloudflare Worker (`worker.js`, `wrangler.toml`, `test.mjs`). Optional; the page runs on localStorage alone until a Worker URL is entered in the Rider sheet. Also stores push subscriptions and the per-rider "already alerted" state. Setup in `docs/SETUP-SYNC.md`.
 - `alerts/` — hourly push-alert job (`run.mjs` sends, `lib.mjs` decides, `test.mjs` checks the rules and that the page's inline scoring still matches `scoring.js`). Runs in `.github/workflows/observations.yml`; skips itself until the secrets exist.
+- `away/` — tests for the page's away-from-home mode (Phase 4; the code itself is inline in `index.html` under "away from home"). `test.mjs` runs that block under Node with the mock OpenStreetMap / Open-Meteo / Commons answers in `fixtures.mjs`; `browser-test.mjs` drives the page in headless Chromium with every external host intercepted (`--live` lets them through) and checks home mode against a baseline copy of the page (`BASELINE_DIR=<dir with main's index.html>`).
 - `sw.js` — service worker for push only: shows the notification and opens the app on the right day. No fetch handler, no cache (so it can never serve a stale page).
 - `docs/` — build plan and setup notes.
 
