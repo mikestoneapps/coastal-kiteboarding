@@ -1,8 +1,12 @@
 // scoring.js — Gorge or Coast scoring model, extracted from the prototype (Oct 2026).
 // Pure functions, no DOM. See SPEC.md §3.
-// Usage: const r = dayScore(spot, forecastDoc, "2026-10-17", "freeride", {speed:1,dir:1,gust:1,wave:1,wx:1});
+// Usage: const r = dayScore(spot, forecastDoc, "2026-10-17", "freeride", {speed:1,dir:1,gust:1,wave:1,wx:1}, limits);
+//   limits = the rider's comfort profile merged with the spot override: limitsFor(settings, spot.id).
+//   Omit it for the default comfort profile. Identical to the scoring in index.html; alerts/test.mjs checks that.
 const DEFAULT_WEIGHTS = {speed:1, dir:1, gust:1, wave:1, wx:1};
-let settings = { weights: {...DEFAULT_WEIGHTS}, weightLb:185, kites:[7,9,12,14] };
+const DEFAULT_COMFORT = {minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3, stretch:true};
+let settings = { weights: {...DEFAULT_WEIGHTS}, weightLb:185, kites:[7,9,12,14], comfort:{...DEFAULT_COMFORT}, overrides:{} };
+function limitsFor(s, spotId){ return {...DEFAULT_COMFORT, ...((s&&s.comfort)||{}), ...(((s&&s.overrides)||{})[spotId]||{})}; }
 const STYLES = {freeride:{lo:14,peak:20,hi:27,label:"Freeride"}, wave:{lo:14,peak:19,hi:24,label:"Wave"}, foil:{lo:9,peak:13,hi:18,label:"Foil"}};
 const DAY_START=7, DAY_END=19, NUKE=35;
 const KG=0.4536;
@@ -45,30 +49,40 @@ function wxScore(code,vis,pop){
   if(pop!=null&&pop>60){ v*=0.85; why=why||"Rain"; }
   return {v,why};
 }
-function hourScore(spot, f, i, style){
+function hourScore(spot, f, i, style, limits){
   const st=STYLES[style];
-  const w=settings.weights;
-  const parts=[[speedScore(f.spd[i],st),w.speed], [dirScore(f.dir[i],spot.dir),w.dir], [gustScore(f.spd[i],f.gst[i]),w.gust],
-               [spot.waves? waveScore(f.wh?m2ft(f.wh[i]):null, style):{v:1},w.wave], [wxScore(f.code[i],f.vis[i],f.pop[i]),w.wx]];
+  const w=settings.weights, L=limits||limitsFor(settings, spot.id);
+  const spd=f.spd[i], gst=f.gst[i], dr=f.dir[i], ft=spot.waves&&f.wh? m2ft(f.wh[i]):null;
+  const sp=speedScore(spd,st), di=dirScore(dr,spot.dir), gu=gustScore(spd,gst), wv=spot.waves? waveScore(ft,style):{v:1}, wx=wxScore(f.code[i],f.vis[i],f.pop[i]);
+  // personal limits (the rider's, from the comfort profile or a per-spot override)
+  const mine=[];
+  if(spd!=null && Math.round(spd)>L.maxWind) mine.push({v:0,gate:"Over your max",mine:true});
+  if(gst!=null && Math.round(gst)>L.maxGust) mine.push({v:0,gate:"Gusts over your limit",mine:true});
+  if(spd!=null && spd<L.minWind && spd>=st.lo-4) mine.push({v:0.5,why:"Below your min",mine:true});
+  if(ft!=null && ft>L.maxSurf) mine.push({v:0.35,why:"Surf over your limit",mine:true});
+  const parts=[[sp,w.speed],[di,w.dir],[gu,w.gust],[wv,w.wave],[wx,w.wx],...mine.map(m=>[m,1])];
   const gate=parts.find(([p])=>p.gate);
   // weighted geometric: each factor's influence is raised to its weight (0 = ignored, 2 = counts double)
   let v=parts.reduce((a,[p,wt])=>a*Math.pow(Math.max(p.v,0.001),wt),1);
   let worst=parts.reduce((a,[p,wt])=> (wt>0 && Math.pow(p.v,wt)<a.pv)? {p,pv:Math.pow(p.v,wt)}:a, {p:{v:2},pv:2}).p;
-  return {v:gate?0:v*10, gate:gate&&gate[0].gate, why: worst.why||worst.gate};
+  const g=gate&&gate[0];
+  return {v:gate?0:v*10, gate:g&&g.gate, why: worst.why||worst.gate, mine: g? !!g.mine: !!worst.mine};
 }
 function m2ft(m){ return m==null?null:m*3.281; }
-function dayScore(spot, f, day, style, weights){
+function dayScore(spot, f, day, style, weights, limits){
   if(weights) settings.weights=weights;
+  const L=limits||limitsFor(settings, spot.id);
   const idx=[]; f.time.forEach((t,i)=>{ if(t.startsWith(day)){ const h=+t.slice(11,13); if(h>=DAY_START&&h<=DAY_END) idx.push(i);} });
   if(!idx.length) return null;
-  const hs=idx.map(i=>({i,...hourScore(spot,f,i,style)}));
+  const hs=idx.map(i=>({i,...hourScore(spot,f,i,style,L)}));
+  const N=Math.min(Math.max(Math.round(L.minHours||3),1),6);
   let best={v:-1,start:0};
-  for(let k=0;k+2<hs.length;k++){ const m=(hs[k].v+hs[k+1].v+hs[k+2].v)/3; if(m>best.v) best={v:m,start:k}; }
-  const win=hs.slice(best.start,best.start+3);
+  for(let k=0;k+N-1<hs.length;k++){ let m=0; for(let j=0;j<N;j++) m+=hs[k+j].v; m/=N; if(m>best.v) best={v:m,start:k}; }
+  const win=hs.slice(best.start,best.start+N);
   const wi=win.map(w=>w.i);
   const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
   const nz=a=>a.filter(x=>x!=null);
-  const spd=avg(nz(wi.map(i=>f.spd[i]))), gst=avg(nz(wi.map(i=>f.gst[i]))), dir=f.dir[wi[1]];
+  const spd=avg(nz(wi.map(i=>f.spd[i]))), gst=avg(nz(wi.map(i=>f.gst[i]))), dir=f.dir[wi[Math.floor(wi.length/2)]];
   const gfs=f.m&&f.m.gfs&&nz(wi.map(i=>f.m.gfs.spd[i])), icon=f.m&&f.m.icon&&nz(wi.map(i=>f.m.icon.spd[i]));
   let agree=null;
   if(gfs&&gfs.length&&icon&&icon.length){ const d=Math.max(Math.abs(avg(gfs)-spd),Math.abs(avg(icon)-spd),Math.abs(avg(gfs)-avg(icon))); agree= d<=4?"Models agree": d<=8?"Models mixed":"Models disagree"; }
@@ -76,7 +90,8 @@ function dayScore(spot, f, day, style, weights){
   const temp=avg(nz(wi.map(i=>f.temp[i])));
   const gates=win.map(w=>w.gate).filter(Boolean), whys=win.map(w=>w.why).filter(Boolean);
   const reason= gates[0] || mode(whys);
-  return {score:Math.round(best.v*10)/10, from:+f.time[wi[0]].slice(11,13), to:+f.time[wi[2]].slice(11,13)+1, spd,gst,dir,agree,wh,wp,temp,reason,hours:hs,idx};
+  const dh=win.find(w=>(w.gate||w.why)===reason)||win[0];
+  return {score:Math.round(best.v*10)/10, from:+f.time[wi[0]].slice(11,13), to:+f.time[wi[wi.length-1]].slice(11,13)+1, spd,gst,dir,agree,wh,wp,temp,reason,mine:dh&&dh.mine,hours:hs,idx,window:N};
 }
 function mode(a){ if(!a.length) return null; const c={}; a.forEach(x=>c[x]=(c[x]||0)+1); return Object.keys(c).sort((x,y)=>c[y]-c[x])[0]; }
 
@@ -87,4 +102,4 @@ function mins(m){ return m<60? m+" min" : Math.floor(m/60)+"h"+String(m%60).padS
 function cls(s,gate){ return gate?"gate": s>=7?"good": s>=4?"ok":"poor"; }
 function kiteFor(spd){ const kg=settings.weightLb*KG; const ideal=kg*2.175/Math.max(spd,6); const ks=settings.kites.length?settings.kites:[7,9,12,14]; return ks.reduce((a,k)=>Math.abs(k-ideal)<Math.abs(a-ideal)?k:a, ks[0]); }
 
-if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,settings,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};
+if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,DEFAULT_COMFORT,limitsFor,settings,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};

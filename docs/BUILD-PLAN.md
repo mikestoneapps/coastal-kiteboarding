@@ -32,6 +32,8 @@ Goal: SPEC §8. One push digest per refresh run; Sunday 6 pm email.
 - Store "already alerted (spot, day, score)" so nothing repeats.
 - Add the Alerts sheet's "Enable notifications" button to the page (push subscription), replacing the mock.
 
+Status (2026-10-15): **push built; the weekly email is the next PR.** The `alerts` job in `.github/workflows/observations.yml` (same hourly schedule, runs beside the observations job) runs `alerts/run.mjs` under Node: it asks the sync Worker for every rider with a push subscription (identified by the Phase 2 sync key, so alert settings and the "already alerted" list are per rider, not per device), pulls one batched Open-Meteo forecast for the curated spots plus everyone's kept spots, scores with `scoring.js` using each rider's style, factor weights, comfort limits and per-spot overrides, and sends one Web Push digest per rider (`web-push`, VAPID). `scoring.js` gained the comfort limits and `minHours` window the page already applied, and `alerts/test.mjs` evaluates the page's inline scoring block against it so the two can't drift again. The Worker (`sync/worker.js`) stores subscriptions (`p:`), alert state (`a:`) and serves the VAPID public key; admin routes for the job are behind an `ADMIN_TOKEN` secret. `sw.js` only shows notifications (no fetch handler, no cache). Setup is in `docs/SETUP-SYNC.md` under "Push alerts"; until the secrets exist the job skips itself. Not done: the Sunday email, station blending in the job (same-day alerts are forecast-only), SMS.
+
 ## Phase 4 — Away-from-home mode
 Goal: SPEC §5. When outside the home region, discover spots within the drive radius (OpenStreetMap kitesurf/windsurf tags + named beaches), score them from a batched Open-Meteo call, infer direction sectors from coastline orientation, mark rows "auto", and let him Keep them. Photos and webcams enrich in the background (Wikimedia Commons geosearch; standard thumbnail widths; descriptive User-Agent).
 - Verify OSM coverage in 3 US regions before relying on it; fall back to named beaches.
@@ -52,6 +54,8 @@ Forecast accuracy memory and per-spot bias (SPEC "Add soon after" #7), seasonal 
 - Kept spots: should "beach faces" be inferred from the coastline automatically (Phase 4 plans this) rather than picked from a compass?
 
 ## Decisions log
+- 2026-10-15: Alert timing. A digest for tomorrow or later goes out on the first hourly run at or after the delivery hour (not only in that exact hour, so a late or skipped run doesn't lose it); a same-day alert only before noon; nothing in quiet hours; the daily cap counts digests, not spots. The "already alerted" list is only advanced when a device actually received the push, so an outage retries next hour.
+- 2026-10-15: Push identity is the sync key. No subscription without sync on; "Unlink this device" also unsubscribes it. VAPID keys are generated once with `npx web-push generate-vapid-keys` (the one terminal step in setup).
 - 2026-10-15: Harbor look chosen over Chart / Instrument / Poster alternatives. Keep it.
 - 2026-10-15: Sort options are Today / Tomorrow / Distance; "Today" sorts by the selected day's score.
 - 2026-10-15: Hosted as a static page on GitHub Pages; no app store. Native only if push/widget demand it.

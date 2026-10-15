@@ -621,7 +621,9 @@ function alertsSheet(){
     : `<div class="notif"><div class="ic">BB</div><div><div class="t">No alert would fire right now</div><div class="b">Nothing within ${mins(A.maxDrive)} scores ${A.minScore}+ in the next ${A.lead} day${A.lead>1?"s":""}${A.confidence?" with the models agreeing":""}. Lower the threshold to see what a digest looks like.</div></div></div>`;
   const bp=bestPerDay(settings.home==="X"?"LO":settings.home, A.maxDrive, settings.style);
   const strip=`<div class="strip7">${dayKeys.map(d=>{const b=bp[d]; const c=b?cls(b.r.score):"gate"; return `<div><small>${dayLabel(d)[0].slice(0,3)}</small><b style="color:var(--${c})">${b?b.r.score.toFixed(1):"–"}</b><span>${b?esc(b.spot.name.split(" /")[0].split(" (")[0]):"—"}</span></div>`;}).join("")}</div>`;
-  sheet("Alerts", `<p style="color:var(--muted);font-size:13px;margin:0 0 8px">One push notification per refresh, best spot first, never one per spot. In the real app these go to your phone; here's what would be sent with the current forecast.</p>
+  sheet("Alerts", `<div id="pushBox">${pushSection(null)}</div>
+    <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-family:var(--body)">What would go out right now</h3>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 8px">One push per hourly check, best spot first, never one per spot. Tomorrow and beyond arrive at ${hhmm(A.hour)}; a same-day alert comes in the morning. This is what the current forecast would send:</p>
     ${preview}
     <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-family:var(--body)">When to tell me</h3>
     <ul class="check">
@@ -643,6 +645,67 @@ function alertsSheet(){
   host.querySelectorAll("[data-a]").forEach(r=>r.oninput=()=>{ A[r.dataset.a]=+r.value; saveSettings(); alertsSheet(); });
   host.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{ const d=+b.dataset.d; A.days=A.days.includes(d)?A.days.filter(x=>x!==d):[...A.days,d].sort(); saveSettings(); alertsSheet(); });
   ["sameDay","confidence","email"].forEach(k=>{ const el=document.getElementById("al-"+k); el.onchange=()=>{ A[k]=el.checked; saveSettings(); alertsSheet(); }; });
+  pushRender();
+}
+
+/* ---------- push notifications (Web Push through the sync Worker; sw.js receives, alerts/ sends) ---------- */
+let swReg=null, pushVapid=undefined;   // pushVapid: undefined = not asked yet, false = sync service unreachable, null = it has no key, string = public key
+let pendingDay=null;                    // "#day=YYYY-MM-DD" from a notification tap, applied once forecasts are in
+function pushSupported(){ return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+function isIOS(){ return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1); }
+function standalone(){ return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }
+async function pushSub(){ try{ if(!swReg) swReg=await navigator.serviceWorker.getRegistration(); return swReg? await swReg.pushManager.getSubscription():null; }catch(e){ return null; } }
+function urlB64ToU8(b){ const s=(b+"=".repeat((4-b.length%4)%4)).replace(/-/g,"+").replace(/_/g,"/"); const r=atob(s); return Uint8Array.from(r,c=>c.charCodeAt(0)); }
+function pushSection(sub){
+  const h=`<h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-family:var(--body)">Notifications on this phone</h3>`;
+  const p=t=>`<p style="color:var(--muted);font-size:13px;margin:0 0 6px">${t}</p>`;
+  const status=`<p id="pushStatus" style="color:var(--muted);font-size:13px;margin:6px 0 0"></p>`;
+  if(!syncOn()) return h+p(`Alerts need sync on, so your alert settings and the list of spot-days you've already been told about follow you between devices. Turn it on under <b>Rider → Sync across devices</b>, then come back here.`)+`<div class="actions"><button class="btn" id="pushRider">Open Rider</button></div>`;
+  if(!pushSupported()) return h+p(isIOS()&&!standalone()? `On an iPhone, notifications only work from the installed app: Share → <b>Add to Home Screen</b>, then open Bistué Boarding from the home screen (iOS 16.4 or newer).` : `This browser can't receive push notifications. Open the app in Safari on your iPhone or in Chrome.`);
+  if(pushVapid===undefined) return h+p(`Checking the sync service…`);
+  if(pushVapid===null) return h+p(`Push isn't set up on the sync service yet. One-time steps are in <b>docs/SETUP-SYNC.md</b> under "Push alerts".`);
+  if(Notification.permission==="denied") return h+p(`Notifications are blocked for this app. Allow them in the phone's Settings → Notifications, then try again.`);
+  if(sub) return h+p(`<b>On.</b> This phone gets one digest per hourly check when a spot within ${mins(settings.alerts.maxDrive)} of either house is forecast to score ${settings.alerts.minScore}+.`)+`<div class="actions"><button class="btn" id="pushOff">Turn off on this phone</button></div>`+status;
+  return h+p(`Off. Turn on to get the digest below on this phone. Each device you link can turn it on separately; the alert rules and the "already told you" list are shared.`)+`<div class="actions"><button class="btn primary" id="pushOn">Enable notifications</button></div>`+status;
+}
+async function pushRender(){
+  const box=document.getElementById("pushBox"); if(!box) return;
+  if(syncOn() && pushSupported() && pushVapid===undefined){
+    try{ const r=await syncFetch("GET",null,"/v1/push/vapid"); pushVapid= r.status===200&&r.data&&r.data.publicKey? r.data.publicKey : r.status===404? null : false; }catch(e){ pushVapid=false; }
+  }
+  const sub=await pushSub();
+  if(!document.getElementById("pushBox")) return;
+  box.innerHTML=pushSection(sub);
+  const st=t=>{ const e=document.getElementById("pushStatus"); if(e) e.textContent=t; };
+  const rd=document.getElementById("pushRider"); if(rd) rd.onclick=riderSheet;
+  const on=document.getElementById("pushOn"); if(on) on.onclick=async()=>{
+    on.disabled=true;
+    try{
+      // The permission prompt has to come straight from the tap (Safari), so it goes first.
+      const perm=await Notification.requestPermission(); if(perm!=="granted"){ pushRender(); return; }
+      if(!swReg) swReg=await navigator.serviceWorker.register("sw.js");
+      await navigator.serviceWorker.ready;
+      if(!pushVapid){ const r=await syncFetch("GET",null,"/v1/push/vapid"); pushVapid=r.status===200&&r.data&&r.data.publicKey? r.data.publicKey: r.status===404? null:false; if(pushVapid===null){ pushRender(); return; } if(!pushVapid) throw new Error("couldn't reach the sync service"); }
+      const sub=await swReg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlB64ToU8(pushVapid)});
+      const r=await syncFetch("PUT",{subscription:sub.toJSON(), ua:navigator.userAgent},"/v1/push");
+      if(r.status!==200){ try{ await sub.unsubscribe(); }catch(e){} throw new Error("sync service said "+r.status); }
+      pushRender();
+    }catch(e){ on.disabled=false; st("Couldn't turn on notifications ("+(e&&e.message||e)+")."); }
+  };
+  const off=document.getElementById("pushOff"); if(off) off.onclick=async()=>{ off.disabled=true; await pushDisable(false); pushRender(); };
+}
+async function pushDisable(silent){
+  // Unsubscribe this device and tell the Worker. Called from "Turn off" and from "Unlink this device".
+  try{ const sub=await pushSub(); if(!sub) return;
+    if(syncOn()) try{ await syncFetch("DELETE",{endpoint:sub.endpoint},"/v1/push"); }catch(e){}
+    await sub.unsubscribe();
+  }catch(e){ if(!silent) console.warn("unsubscribe failed",e); }
+}
+function applyDayHash(){
+  // "#day=YYYY-MM-DD" (a notification tap) selects that day once forecasts are loaded.
+  const m=location.hash.match(/^#day=(\d{4}-\d{2}-\d{2})$/); if(!m) return;
+  try{ history.replaceState(null,"",location.pathname+location.search); }catch(e){}
+  if(dayKeys.includes(m[1])){ selDay=m[1]; closeSheet(); render(); } else pendingDay=m[1];
 }
 function widgetMock(){
   const all=computeAll().filter(x=>x.drive<=settings.radius); const t=all[0];
@@ -758,9 +821,9 @@ function syncOn(){ return !!(syncState.key && syncState.url); }
 function syncNewKey(){ const b=new Uint8Array(32); crypto.getRandomValues(b); return btoa(String.fromCharCode(...b)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
 function syncLink(){ return location.origin+location.pathname+"#sync="+syncState.key+"&url="+encodeURIComponent(syncState.url); }
 function syncSetStatus(t){ syncState.status=t; const el=document.getElementById("syncStatus"); if(el) el.textContent=t; }
-async function syncFetch(method, body){
+async function syncFetch(method, body, path="/v1/settings"){
   const c=new AbortController(); const t=setTimeout(()=>c.abort(),15000);
-  try{ const r=await fetch(syncState.url.replace(/\/+$/,"")+"/v1/settings",{method,signal:c.signal,headers:{Authorization:"Bearer "+syncState.key,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
+  try{ const r=await fetch(syncState.url.replace(/\/+$/,"")+path,{method,signal:c.signal,headers:{Authorization:"Bearer "+syncState.key,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
     let d=null; try{ d=await r.json(); }catch(e){} return {status:r.status,data:d}; } finally{ clearTimeout(t); }
 }
 function applyRemote(doc){
@@ -813,7 +876,7 @@ function bindSync(){
   const cp=document.getElementById("syncCopy"); if(cp) cp.onclick=()=>{ const t=document.getElementById("syncLinkText"); t.select(); const done=()=>{cp.textContent="Copied"; setTimeout(()=>cp.textContent="Copy link",2000);}; try{ navigator.clipboard.writeText(t.value).then(done).catch(()=>{ try{document.execCommand("copy")}catch(_){} done(); }); }catch(_){ done(); } };
   const sh=document.getElementById("syncShare"); if(sh) sh.onclick=()=>{ navigator.share({title:"Bistué Boarding sync link",text:"Open this on the other device to link it:",url:syncLink()}).catch(()=>{}); };
   const pl=document.getElementById("syncPull"); if(pl) pl.onclick=()=>{ syncSetStatus("Pulling…"); syncPull(); };
-  const off=document.getElementById("syncOff"); if(off) off.onclick=()=>{ syncState={...syncState,key:null,remoteUpdatedAt:null,status:""}; try{localStorage.removeItem("goc.sync")}catch(e){} document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); render(); };
+  const off=document.getElementById("syncOff"); if(off) off.onclick=async()=>{ await pushDisable(true); syncState={...syncState,key:null,remoteUpdatedAt:null,status:""}; try{localStorage.removeItem("goc.sync")}catch(e){} document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); render(); };
 }
 (function syncFromHash(){
   // A device link: #sync=<key>&url=<worker>. Store it, drop it from the address bar, pull.
@@ -831,6 +894,7 @@ function ingest(docs, fetchedAt){
   const today=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
   dayKeys=[...new Set(first.time.map(t=>t.slice(0,10)))].filter(d=>d>=today);
   if(!dayKeys.length) dayKeys=[...new Set(first.time.map(t=>t.slice(0,10)))];
+  if(pendingDay&&dayKeys.includes(pendingDay)){ selDay=pendingDay; pendingDay=null; }
   if(!selDay||!dayKeys.includes(selDay)) selDay=dayKeys[0];
   const fa=new Date(fetchedAt||first.fetchedAt);
   const ageMin=Math.round((Date.now()-fa.getTime())/60000);
@@ -914,6 +978,8 @@ async function refreshAll(manual){
   setRefreshUI("idle","");
   document.getElementById("refreshBtn").onclick=()=>refreshAll(true);
   if(syncOn()) syncPull();   // settings sync never holds up the forecast
+  applyDayHash(); window.addEventListener("hashchange",applyDayHash);
+  if("serviceWorker" in navigator){ try{ navigator.serviceWorker.register("sw.js").then(r=>{swReg=r;}).catch(()=>{}); navigator.serviceWorker.addEventListener("message",e=>{ if(e.data&&e.data.url){ const i=e.data.url.indexOf("#"); if(i>=0){ location.hash=e.data.url.slice(i); } } }); }catch(e){} }
   refreshAll(false);
   // re-fetch when the app comes back to the foreground after 30+ minutes
   document.addEventListener("visibilitychange",()=>{ if(document.visibilityState!=="visible") return; if(lastFetchedAt && Date.now()-Date.parse(lastFetchedAt)>30*60000) refreshAll(false); if(syncOn() && Date.now()-syncState.lastPull>5*60000) syncPull(); });

@@ -1,8 +1,13 @@
 name: Station observations
 
-# Fetch the latest NWS and NDBC readings for every spot into obs.json and commit it so the page
-# can read buoys (no CORS) same-origin. Hourly 05:00–21:00 Pacific on main; cron is UTC, so the window
-# below covers both PDT (12–04 UTC) and PST (13–05 UTC) with one extra run at each edge.
+# The hourly job. Two independent parts:
+#   observations — fetch the latest NWS and NDBC readings for every spot into obs.json and commit it so
+#                  the page can read buoys (no CORS) same-origin.
+#   alerts       — score every spot for every rider who enabled notifications (alerts/run.mjs, scoring.js)
+#                  and send one push digest per rider. Skips itself until the three secrets exist
+#                  (docs/SETUP-SYNC.md, "Push alerts"). Commits nothing.
+# Hourly 05:00–21:00 Pacific on main; cron is UTC, so the window below covers both PDT (12–04 UTC) and
+# PST (13–05 UTC) with one extra run at each edge.
 on:
   schedule:
     - cron: "7 12-23,0-5 * * *"
@@ -43,3 +48,26 @@ jobs:
           # Another run or a merge may have landed meanwhile, so rebase once before pushing.
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SYNC_URL: ${{ secrets.SYNC_URL }}
+      SYNC_ADMIN_TOKEN: ${{ secrets.SYNC_ADMIN_TOKEN }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: alerts/package-lock.json
+      - name: Install web-push
+        run: npm ci --prefix alerts --no-audit --no-fund
+      - name: Check the rules against the page
+        run: node alerts/test.mjs
+      - name: Evaluate and send push alerts
+        run: node alerts/run.mjs
