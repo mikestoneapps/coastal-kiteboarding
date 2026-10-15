@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bistué Boarding">
+<meta name="theme-color" content="#0e5f7a">
+<meta name="description" content="Where to kite today: the Gorge or the Oregon coast, scored and ranked by drive time.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}[hidden]{display:none!important}html,body{margin:0}</style>
+<title>Bistué Boarding</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one ranked list, scanned like a lift-line board. Big score left, drive time right, detail folds open under the row. */
+:root{
+  --bg:#edf0f2; --surface:#ffffff; --surface2:#f5f7f8; --fg:#162029; --muted:#5d6c78; --line:#d3dbe1; --accent:#0e5f7a; --accent-fg:#ffffff;
+  --good:#1e7f49; --ok:#b8800a; --poor:#b23f2c; --gate:#7c8792;
+  --good-bg:#dff3e6; --ok-bg:#fbefd0; --poor-bg:#f8dcd6; --gate-bg:#e6eaee;
+  --display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif; --body:"Source Sans 3",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f161c; --surface:#17222b; --surface2:#1e2b35; --fg:#e8eef2; --muted:#93a3b0; --line:#2b3a46; --accent:#5fc3e6; --accent-fg:#0b1218;
+  --good:#5fd38a; --ok:#f0bd4e; --poor:#f08670; --gate:#8a97a3;
+  --good-bg:#153726; --ok-bg:#3b2f10; --poor-bg:#3f1f19; --gate-bg:#243039; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f161c; --surface:#17222b; --surface2:#1e2b35; --fg:#e8eef2; --muted:#93a3b0; --line:#2b3a46; --accent:#5fc3e6; --accent-fg:#0b1218;
+  --good:#5fd38a; --ok:#f0bd4e; --poor:#f08670; --gate:#8a97a3;
+  --good-bg:#153726; --ok-bg:#3b2f10; --poor-bg:#3f1f19; --gate-bg:#243039; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.4;margin:0;padding-block:0 96px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:760px;margin:0 auto}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:18px 0 10px;flex-wrap:wrap}
+header.top h1{font-size:30px;line-height:1;letter-spacing:-.01em;font-weight:700}
+header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
+.refresh{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}.refresh span{font-size:12px;color:var(--muted)}
+.btn.small{padding:4px 10px;font-size:13px}.btn:disabled{opacity:.6;cursor:default}
+.hold{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px}.hold.warn{border-color:var(--ok);background:var(--ok-bg)}
+.link{all:unset;color:var(--accent);cursor:pointer;font-weight:600}.kv span small{display:block;font:500 11px var(--body);color:var(--muted)}
+.narr{font-size:15px;line-height:1.35;margin:2px 0 10px;color:var(--fg)}.narr b{font-family:var(--display);font-weight:600}
+.notif{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:0 4px 14px rgba(0,0,0,.12);margin:8px 0;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}.notif .ic{width:34px;height:34px;border-radius:8px;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font:700 14px var(--display)}.notif .t{font:600 13px var(--body)}.notif .b{font-size:13px;color:var(--fg)}.notif .when{font-size:11px;color:var(--muted);float:right}
+.widget{width:170px;height:170px;border-radius:22px;background:linear-gradient(160deg,var(--accent),#0a3d50);color:#fff;padding:14px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(0,0,0,.2)}.widget .w1{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;opacity:.8}.widget .w2{font:700 40px var(--display);line-height:1}.widget .w3{font:600 16px var(--display);line-height:1.1}.widget .w4{font:500 12px var(--body);opacity:.85}
+.strip7{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0 12px}.strip7 div{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:6px 4px;text-align:center;min-width:0}.strip7 small{display:block;font:600 10px var(--body);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}.strip7 b{display:block;font:700 18px var(--display);line-height:1.1}.strip7 span{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ticks{display:flex;justify-content:space-between;font:500 10px var(--body);color:var(--muted);margin:-2px 2px 4px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.dayspick{display:flex;gap:4px}.dayspick button{flex:1;border:1px solid var(--line);background:var(--surface2);color:var(--muted);font:600 12px var(--body);padding:6px 0;border-radius:6px;cursor:pointer}.dayspick button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.seg{display:inline-flex;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
+.seg button{border:0;background:transparent;color:var(--muted);font:600 13px var(--body);padding:6px 10px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button:focus-visible,button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.days{display:flex;gap:6px;overflow-x:auto;padding:4px 0 10px;scrollbar-width:none}
+.days button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:10px;padding:8px 12px;cursor:pointer;font-family:var(--display);font-size:15px;font-weight:600;line-height:1.1;text-align:left;min-width:84px}
+.days button small{display:block;font:500 11px var(--body);color:var(--muted);margin-top:2px}
+.days button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.hero{background:var(--surface);border:1px solid var(--line);border-radius:10px;margin:4px 0 14px;display:flex;align-items:stretch;overflow:hidden}
+.hero .hpic{flex:0 0 132px;position:relative;background:var(--surface2)}.hero .hpic img{width:100%;height:100%;object-fit:cover;display:block;min-height:96px}
+.hero .hbody{display:flex;gap:14px;align-items:center;padding:12px 14px;min-width:0;flex:1}
+@media (max-width:480px){.hero .hpic{flex-basis:104px}}
+.hero .big{font-family:var(--display);font-size:40px;font-weight:700;line-height:1;min-width:58px;text-align:center;font-variant-numeric:tabular-nums}
+.hero .lbl{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.hero .name{font-family:var(--display);font-size:20px;font-weight:600;line-height:1.15}
+.hero .meta{color:var(--muted);font-size:14px}
+.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.radius{display:flex;align-items:center;gap:8px;flex:1 1 220px;min-width:0}
+.radius label{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.radius input{flex:1;min-width:0;accent-color:var(--accent)}
+.radius output{font:500 13px var(--mono);min-width:5ch;text-align:right}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.row>button.head{all:unset;display:grid;grid-template-columns:112px 1fr auto;gap:12px;align-items:center;width:100%;padding:0 12px 0 0;cursor:pointer;box-sizing:border-box}
+.pic{position:relative;width:112px;height:76px;overflow:hidden;background:var(--surface2)}
+.pic img{width:100%;height:100%;object-fit:cover;display:block}
+.pic.nophoto,.hpic.nophoto{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--surface2),var(--line))}
+.pic.nophoto svg,.hpic.nophoto svg{width:40%;height:40%;color:var(--muted);opacity:.7}
+.pic.nophoto .score{left:6px;bottom:6px}
+.pic .score{position:absolute;left:6px;bottom:6px;height:auto;padding:3px 7px;font-size:17px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.row>button.head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.score{font-family:var(--display);font-size:28px;font-weight:700;line-height:1;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.score.good{background:var(--good-bg);color:var(--good)}.score.ok{background:var(--ok-bg);color:var(--ok)}.score.poor{background:var(--poor-bg);color:var(--poor)}.score.gate{background:var(--gate-bg);color:var(--gate)}
+.row .name{font-family:var(--display);font-size:18px;font-weight:600;line-height:1.1}
+.row .name span{font:500 12px var(--body);color:var(--muted);margin-left:6px}
+.row .wind{font:500 13px var(--mono);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-block;font:600 11px var(--body);letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
+.chip.good{background:var(--good-bg);color:var(--good);border-color:transparent}.chip.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}.chip.poor{background:var(--poor-bg);color:var(--poor);border-color:transparent}.chip.gate{background:var(--gate-bg);color:var(--gate);border-color:transparent}
+.drive{text-align:right;font-family:var(--display);font-size:18px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.drive small{display:block;font:500 11px var(--body);color:var(--muted);margin-top:3px}
+.detail{border-top:1px solid var(--line);padding:12px;background:var(--surface2);display:flex;flex-direction:column;gap:10px}
+.detail p{margin:0;font-size:14px}
+.detail .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.kv div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.kv b{display:block;font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.kv span{font:500 14px var(--mono)}
+.strip{width:100%;height:auto;display:block}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 12px;border-radius:8px;font:600 14px var(--body);cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:24px;text-align:center;color:var(--muted)}
+.beyond{margin-top:14px;color:var(--muted);font-size:14px}
+.beyond button{all:unset;color:var(--accent);cursor:pointer;font-weight:600}
+.dock{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-top:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:8px;justify-content:center;z-index:5}
+.sheet{position:fixed;inset:0;background:rgba(10,16,20,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet>div{background:var(--surface);color:var(--fg);width:100%;max-width:640px;max-height:85vh;overflow:auto;border-radius:14px 14px 0 0;padding-block:14px calc(20px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.sheet h2{font-size:22px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.sheet h2 button{all:unset;cursor:pointer;color:var(--muted);font:600 14px var(--body)}
+.check{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.check li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line)}
+.check input{width:20px;height:20px;accent-color:var(--accent);margin-top:1px;flex:0 0 auto}
+.check li.why small{display:block;color:var(--muted)}
+.check li.add{gap:8px}.check li.add input{flex:1;min-width:0;font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg)}
+.check .rm{all:unset;cursor:pointer;width:24px;height:24px;border-radius:6px;background:var(--poor-bg);color:var(--poor);font:700 16px var(--body);text-align:center;flex:0 0 auto}
+.check h3{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px;font-family:var(--body);font-weight:600}
+.field{display:flex;flex-direction:column;gap:4px;margin:10px 0}
+.field label{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.field input[type=number]{font:500 16px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);width:120px}
+.kites{display:flex;gap:6px;flex-wrap:wrap}
+.kites button{border:1px solid var(--line);background:var(--surface2);color:var(--muted);font:600 14px var(--mono);padding:6px 10px;border-radius:8px;cursor:pointer}
+.kites button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.how p{font-size:14px;margin:0 0 8px}
+.how ol{padding-left:18px;margin:0 0 8px;font-size:14px}
+@media (max-width:480px){.row>button.head{grid-template-columns:96px 1fr auto;gap:8px}.pic{width:96px;height:72px}.pic .score{font-size:15px}.row .name{font-size:16px}.drive{font-size:16px}.hero .big{font-size:34px}}
+@media (prefers-reduced-motion:no-preference){.detail{animation:fade .18s ease-out}@keyframes fade{from{opacity:.4}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Bistué Boarding</h1>
+      <div class="sub" id="sub">Loading forecast…</div>
+      <div class="refresh"><button class="btn small" id="refreshBtn" hidden>Refresh now</button><span id="refreshNote" hidden></span></div>
+    </div>
+    <div class="seg" role="group" aria-label="Home base">
+      <button id="homeLO" aria-pressed="true">Lake Oswego</button>
+      <button id="homeBC" aria-pressed="false">Bay City</button>
+      <button id="homeX" aria-pressed="false">Elsewhere</button>
+    </div>
+  </header>
+
+  <nav class="days" id="days" aria-label="Day"></nav>
+
+  <div class="narr" id="narr"></div>
+  <div id="hero"></div>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Riding style">
+      <button data-style="freeride" aria-pressed="true">Freeride</button>
+      <button data-style="wave" aria-pressed="false">Wave</button>
+      <button data-style="foil" aria-pressed="false">Foil</button>
+    </div>
+    <div class="seg" role="group" aria-label="Sort">
+      <button data-sort="score" aria-pressed="true">Today</button>
+      <button data-sort="tomorrow" aria-pressed="false">Tomorrow</button>
+      <button data-sort="distance" aria-pressed="false">Distance</button>
+    </div>
+    <div class="radius">
+      <label for="radius">Drive</label>
+      <input type="range" id="radius" min="30" max="240" step="15" value="90">
+      <output id="radiusOut" for="radius">1h30</output>
+    </div>
+  </div>
+
+  <div class="list" id="list"></div>
+  <div class="beyond" id="beyond"></div>
+</div>
+
+<div class="dock">
+  <button class="btn" id="openCheck">Checklist</button>
+  <button class="btn" id="openSettings">Rider</button>
+  <button class="btn" id="openAlerts">Alerts</button>
+  <button class="btn" id="openHow">How it scores</button>
+</div>
+
+<div id="sheetHost"></div>
+
+<script>
+const SPOTS = /*SPOTS*/[{"id":"stevenson","name":"Stevenson","region":"Gorge","lat":45.695,"lon":-121.885,"driveLO":65,"driveBC":160,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. Bob's Beach launch; flat-ish river, good warm-up for the Gorge.","parking":"Bob's Beach lot off Cascade Ave, Stevenson WA","plat":45.6943,"plon":-121.8852},{"id":"hoodriver","name":"Hood River Sandbar","region":"Gorge","lat":45.716,"lon":-121.515,"driveLO":75,"driveBC":170,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. 14\u201325 mph typical, 25\u201335+ when it's on. Sandbar is managed by the Columbia Gorge Kiteboarding Assoc.","parking":"Hood River Event Site / Sandbar lot (Port of Hood River, day fee)","plat":45.7159,"plon":-121.5141},{"id":"rufus","name":"Rufus (Rock Pile)","region":"Gorge","lat":45.692,"lon":-120.733,"driveLO":120,"driveBC":215,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"East Gorge, west wind only. 12\u201350 mph depending on the pattern; often blowing when Hood River is light.","parking":"Rufus launch, Old Hwy 30 / I-84 exit 109","plat":45.6933,"plon":-120.7315},{"id":"fortstevens","name":"Fort Stevens / Clatsop Spit","region":"North Coast","lat":46.19,"lon":-123.98,"driveLO":125,"driveBC":55,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Northernmost coast spot, big open beach. Good for downwinders; watch the Columbia bar current.","parking":"Fort Stevens State Park, Parking Lot C (day-use fee or OR State Parks pass)","plat":46.2015,"plon":-123.9814},{"id":"gearhart","name":"Gearhart","region":"North Coast","lat":46.03,"lon":-123.93,"driveLO":110,"driveBC":45,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Summer NW thermal starts ~2pm, 15\u201330 mph. Drive-on beach; cars on the sand are the hazard.","parking":"Gearhart beach access at end of 10th St (drive on sand)","plat":46.0268,"plon":-123.9262},{"id":"manzanita","name":"Manzanita / Nehalem Bay","region":"North Coast","lat":45.72,"lon":-123.94,"driveLO":105,"driveBC":30,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Windiest spot on the north coast; usually blows ~10 mph stronger than nearby beaches. Bring the small kite.","parking":"Nehalem Bay State Park day-use lot (OR State Parks pass)","plat":45.6985,"plon":-123.9315},{"id":"rockaway","name":"Rockaway Beach","region":"North Coast","lat":45.613,"lon":-123.95,"driveLO":100,"driveBC":15,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long straight beach, easy access from 101. Lighter than Manzanita on the same day.","parking":"Rockaway Beach wayside lot, S 1st Ave","plat":45.6135,"plon":-123.9448},{"id":"bayocean","name":"Bayocean Spit","region":"Tillamook Bay","lat":45.53,"lon":-123.95,"driveLO":100,"driveBC":15,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Closest to the Bay City house. Ocean beach on the outside; the bay side flattens out at lower tide.","parking":"Bayocean Peninsula trailhead lot, Bayocean Rd","plat":45.5263,"plon":-123.9469},{"id":"oceanside","name":"Oceanside","region":"Tillamook Bay","lat":45.46,"lon":-123.97,"driveLO":105,"driveBC":20,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Under the cliffs, quiet. On a good swell day it's one of the best wave spots on the north coast.","parking":"Oceanside Beach State Recreation Site lot, Pacific Ave","plat":45.4603,"plon":-123.9693},{"id":"capelookout","name":"Cape Lookout","region":"Tillamook Bay","lat":45.36,"lon":-123.97,"driveLO":115,"driveBC":30,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long beach north of the cape; the headland shelters S wind and accelerates N wind.","parking":"Cape Lookout State Park day-use lot (OR State Parks pass)","plat":45.3614,"plon":-123.9707},{"id":"pacificcity","name":"Pacific City","region":"Central Coast","lat":45.2,"lon":-123.97,"driveLO":110,"driveBC":35,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Cape Kiwanda bends the N wind; launch well south of the dory boats and surfers.","parking":"Cape Kiwanda lot (paid) or Bob Straub State Park lot to the south","plat":45.2155,"plon":-123.9709},{"id":"roadsend","name":"Roads End, Lincoln City","region":"Central Coast","lat":45.01,"lon":-124.01,"driveLO":115,"driveBC":60,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long stretch of beach at the north end of town, away from the crowds.","parking":"Roads End State Recreation Site lot, Logan Rd","plat":45.0083,"plon":-124.0107},{"id":"newport","name":"Newport South Jetty","region":"Central Coast","lat":44.61,"lon":-124.07,"driveLO":150,"driveBC":90,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Some of the best down-the-line wave riding on the coast when NW wind meets NW swell.","parking":"South Jetty lot, SW Jetty Way (South Beach State Park)","plat":44.6103,"plon":-124.071},{"id":"florence","name":"Florence South Jetty","region":"Central Coast","lat":44.01,"lon":-124.13,"driveLO":180,"driveBC":130,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"N wind: ride the south jetty. S wind (winter, gustier): ride the north jetty. Can hit 40+; go early on big days.","parking":"South Jetty Rd beach lot, Oregon Dunes NRA (day fee)","plat":44.012,"plon":-124.131},{"id":"floras","name":"Floras Lake","region":"South Coast","lat":42.9,"lon":-124.5,"driveLO":300,"driveBC":240,"waves":false,"pass":false,"dir":{"work":[[170,360],[0,60]],"best":[[300,360],[0,30]],"off":[[90,160]]},"notes":"Freshwater lake behind the dunes, steady N wind, waist-deep launch. Worth the drive when it's nuking everywhere else. 8\u201310m kites typical.","parking":"Boice Cope County Park, Floras Lake Loop Rd","plat":42.9008,"plon":-124.5035}];
+const HOMES = {LO:{name:"Lake Oswego",lat:45.4207,lon:-122.6706,key:"driveLO"}, BC:{name:"Bay City",lat:45.5229,lon:-123.8893,key:"driveBC"}};
+const PLACES = [["Portland (downtown)",45.5202,-122.6742],["Hood River",45.7054,-121.5215],["Seaside",45.9932,-123.9226],["Cannon Beach",45.8918,-123.9615],["Tillamook",45.4562,-123.8440],["Lincoln City",44.9582,-124.0179],["Newport",44.6368,-124.0535],["Salem",44.9429,-123.0351],["Corvallis",44.5646,-123.2620],["Eugene",44.0521,-123.0868],["Bend",44.0582,-121.3153],["Vancouver WA",45.6387,-122.6615]];
+const DEFAULT_WEIGHTS = {speed:1, dir:1, gust:1, wave:1, wx:1};
+const DEFAULT_CHECK = {
+  gear:["Kites","Bar and lines","Board, fins, straps","Harness and spreader bar","Pump","Helmet and impact vest","Line knife and leash"],
+  wear:["Wetsuit 5/4 and hood","Booties and gloves","Dry change of clothes and towel"],
+  logistics:["Water and food","Phone in a dry bag","Keys stashed somewhere you'll remember"]
+};
+function homeInfo(){
+  if(settings.home==="X"){ const c=settings.custom||{}; return {name:c.name||"Custom spot",lat:c.lat,lon:c.lon,key:null}; }
+  return HOMES[settings.home];
+}
+function haversineMi(a,b,c,d){ const R=3958.8,r=Math.PI/180; const x=Math.sin((c-a)*r/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2; return 2*R*Math.asin(Math.sqrt(x)); }
+function driveMins(spot){
+  const h=homeInfo();
+  if(h.key) return spot[h.key];
+  if(h.lat==null||h.lon==null) return null;
+  const mi=haversineMi(h.lat,h.lon,spot.plat,spot.plon)*1.35;   // road factor
+  return Math.round(mi/47*60/5)*5;                               // ~47 mph average incl. I-84 / 26
+}
+const STYLES = {freeride:{lo:14,peak:20,hi:27,label:"Freeride"}, wave:{lo:14,peak:19,hi:24,label:"Wave"}, foil:{lo:9,peak:13,hi:18,label:"Foil"}};
+const DAY_START=7, DAY_END=19, NUKE=35;
+const KG=0.4536;
+const GLYPH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h8a2 2 0 1 1-2 2"/></svg>';  // shown for any spot without a photo (photo:false, or the image fails to load)
+
+const DEFAULT_COMFORT={minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3, stretch:true};
+const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true};
+let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score"};
+try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}}; }catch(e){}
+function limitsFor(spotId){ return {...settings.comfort, ...(settings.overrides[spotId]||{})}; }
+const CAMS={pacificcity:{name:"Pacific City surf cam",url:"https://www.surf-forecast.com/breaks/Pacific-City_Gas-Chambers/webcams/latest",mi:0.6},
+            roadsend:{name:"Lincoln City surf cam",url:"https://www.surf-forecast.com/breaks/Lincoln-City/webcams/latest",mi:2.1},
+            capelookout:{name:"Cape Lookout surf cam",url:"https://www.surf-forecast.com/breaks/Cape-Lookout/webcams/latest",mi:1.4}};
+let obsData={};   // spotId -> [{id,name,kind,dist_mi,spd,gst,dir,age_min,...}]
+if(!settings.check) settings.check=JSON.parse(JSON.stringify(DEFAULT_CHECK));
+function saveSettings(){ try{localStorage.setItem("goc.settings",JSON.stringify(settings))}catch(e){} }
+
+let forecasts = {};   // spotId -> doc
+let dayKeys = [];      // ["2026-10-15",...]
+let selDay = null;
+let openSpot = null;
+let showBeyond = false;
+
+/* ---------- scoring ---------- */
+function inSectors(d, secs){ return secs.some(([a,b])=> a<=b ? (d>=a && d<=b) : (d>=a || d<=b)); }
+function dirScore(d, dir){
+  if(d==null) return {v:0.5};
+  if(inSectors(d,dir.off)) return {v:0,gate:"Offshore"};
+  if(inSectors(d,dir.best)) return {v:1};
+  if(inSectors(d,dir.work)) return {v:0.75};
+  return {v:0.4,why:"Cross-off"};
+}
+function speedScore(s, st){
+  if(s==null) return {v:0};
+  if(s>=NUKE) return {v:0,gate:"Nuking"};
+  const {lo,peak,hi}=st;
+  if(s<lo-4) return {v:0,why:"Too light"};
+  if(s<lo) return {v:0.6*(s-(lo-4))/4,why:"Light"};
+  if(s<=peak) return {v:0.6+0.4*(s-lo)/(peak-lo)};
+  if(s<=hi) return {v:1-0.3*(s-peak)/(hi-peak)};
+  if(s<hi+6) return {v:0.7*(1-(s-hi)/6),why:"Strong"};
+  return {v:0,why:"Too strong"};
+}
+function gustScore(s,g){
+  if(s==null||g==null||s<5) return {v:1};
+  if(g>=38) return {v:0,gate:"Nuking"};
+  const r=g/s; if(r<=1.3) return {v:1};
+  const v=Math.max(0.3, 1-(r-1.3)/0.6*0.7); return {v, why: r>1.5?"Gusty":undefined};
+}
+function waveScore(ft, st){
+  if(ft==null) return {v:1};
+  if(st==="wave"){ if(ft<1.5) return {v:0.7,why:"Flat"}; if(ft<=7) return {v:1}; if(ft<=9) return {v:0.8}; return {v:0.5,why:"Big surf"}; }
+  if(st==="foil"){ if(ft<=3) return {v:1}; if(ft<=5) return {v:0.75}; return {v:0.5,why:"Big surf"}; }
+  if(ft<=5) return {v:1}; if(ft<=8) return {v:0.8}; return {v:0.5,why:"Big surf"};
+}
+function wxScore(code,vis,pop){
+  if(code!=null && code>=95) return {v:0,gate:"Storms"};
+  let v=1, why;
+  if(code===45||code===48||(vis!=null&&vis<1600)){ v*=0.5; why="Fog"; }
+  if(pop!=null&&pop>60){ v*=0.85; why=why||"Rain"; }
+  return {v,why};
+}
+function hourScore(spot, f, i, style){
+  const st=STYLES[style];
+  const w=settings.weights, L=limitsFor(spot.id);
+  const spd=f.spd[i], gst=f.gst[i], dr=f.dir[i], ft=spot.waves&&f.wh? m2ft(f.wh[i]):null;
+  const sp=speedScore(spd,st), di=dirScore(dr,spot.dir), gu=gustScore(spd,gst), wv=spot.waves? waveScore(ft,style):{v:1}, wx=wxScore(f.code[i],f.vis[i],f.pop[i]);
+  // detail sentences: who owns the limit (spot vs you)
+  if(sp.gate) sp.detail=`${Math.round(spd)} kn sustained — over the ${NUKE} kn safety gate`;
+  else if(sp.why) sp.detail=`${Math.round(spd)} kn vs the ${st.lo}–${st.hi} kn ${st.label.toLowerCase()} band`;
+  if(di.gate) di.detail=`Offshore at this spot (${compass(dr)} wind)`; else if(di.why) di.detail=`${compass(dr)} is cross-off for this beach`;
+  if(gu.gate) gu.detail=`Gusts ${Math.round(gst)} kn — over the 38 kn safety gate`; else if(gu.why) gu.detail=`Gusts ${Math.round(gst)} on ${Math.round(spd)} kn (${(gst/Math.max(spd,1)).toFixed(1)}× ratio)`;
+  if(wv.why) wv.detail=`Surf ${ft.toFixed(0)} ft for ${st.label.toLowerCase()}`;
+  if(wx.gate||wx.why) wx.detail=wx.gate? "Thunderstorms in the forecast": wx.why==="Fog"? "Fog or low visibility":"Likely rain";
+  // personal limits (yours, tappable in the UI)
+  const mine=[];
+  if(spd!=null && Math.round(spd)>L.maxWind) mine.push({v:0,gate:"Over your max",detail:`${Math.round(spd)} kn, over your ${L.maxWind} kn max`,mine:true});
+  if(gst!=null && Math.round(gst)>L.maxGust) mine.push({v:0,gate:"Gusts over your limit",detail:`Gusts ${Math.round(gst)} kn, over your ${L.maxGust} kn limit`,mine:true});
+  if(spd!=null && spd<L.minWind && spd>=st.lo-4) mine.push({v:0.5,why:"Below your min",detail:`${Math.round(spd)} kn, under your ${L.minWind} kn minimum`,mine:true});
+  if(ft!=null && ft>L.maxSurf) mine.push({v:0.35,why:"Surf over your limit",detail:`Surf ${ft.toFixed(0)} ft, over your ${L.maxSurf} ft limit`,mine:true});
+  const parts=[[sp,w.speed],[di,w.dir],[gu,w.gust],[wv,w.wave],[wx,w.wx],...mine.map(m=>[m,1])];
+  const gate=parts.find(([p])=>p.gate);
+  // weighted geometric: each factor's influence is raised to its weight (0 = ignored, 2 = counts double)
+  let v=parts.reduce((a,[p,wt])=>a*Math.pow(Math.max(p.v,0.001),wt),1);
+  let worst=parts.reduce((a,[p,wt])=> (wt>0 && Math.pow(p.v,wt)<a.pv)? {p,pv:Math.pow(p.v,wt)}:a, {p:{v:2},pv:2}).p;
+  const g=gate&&gate[0];
+  return {v:gate?0:v*10, gate:g&&g.gate, why: worst.why||worst.gate, detail: g? g.detail: worst.detail, mine: g? !!g.mine: !!worst.mine};
+}
+function m2ft(m){ return m==null?null:m*3.281; }
+function stationFor(spotId){
+  const rows=(obsData[spotId]||[]).filter(o=>o.spd!=null && o.age_min!=null && o.age_min<=120);
+  if(!rows.length) return null;
+  const o=rows[0]; o.trust= o.dist_mi<=3?1: o.dist_mi<=10?0.5: 0.2; return o;
+}
+function blendToday(spot,f){
+  // Replace the current hour's forecast with a trust-weighted blend of the nearest station reading. Today only.
+  const o=stationFor(spot.id); if(!o||o.trust<0.5) return f;
+  const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
+  const i=f.time.findIndex(t=>t.slice(0,13)===nowLA); if(i<0) return f;
+  const g={...f, spd:[...f.spd], gst:[...f.gst], dir:[...f.dir]};
+  const w=o.trust; g.spd[i]=Math.round((o.spd*w+(f.spd[i]||0)*(1-w))*10)/10; if(o.gst!=null) g.gst[i]=Math.round((o.gst*w+(f.gst[i]||0)*(1-w))*10)/10; if(o.dir!=null&&o.spd>=6) g.dir[i]=o.dir;
+  return g;
+}
+function disagreement(spot,f){
+  const o=stationFor(spot.id); if(!o) return null;
+  const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
+  const i=f.time.findIndex(t=>t.slice(0,13)===nowLA); if(i<0||f.spd[i]==null) return null;
+  const ds=Math.abs(o.spd-f.spd[i]); let dd=o.dir!=null&&f.dir[i]!=null? Math.abs(o.dir-f.dir[i])%360:0; if(dd>180) dd=360-dd;
+  if(ds>6 || (o.spd>=6 && dd>60)) return {o, fc:f.spd[i], text:`Station reads ${Math.round(o.spd)} kn`};
+  return null;
+}
+function dayScore(spot, f, day, style){
+  const todayLA=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+  if(day===todayLA) f=blendToday(spot,f);
+  const idx=[]; f.time.forEach((t,i)=>{ if(t.startsWith(day)){ const h=+t.slice(11,13); if(h>=DAY_START&&h<=DAY_END) idx.push(i);} });
+  if(!idx.length) return null;
+  const hs=idx.map(i=>({i,...hourScore(spot,f,i,style)}));
+  const N=Math.min(Math.max(Math.round(limitsFor(spot.id).minHours||3),1),6);
+  let best={v:-1,start:0};
+  for(let k=0;k+N-1<hs.length;k++){ let m=0; for(let j=0;j<N;j++) m+=hs[k+j].v; m/=N; if(m>best.v) best={v:m,start:k}; }
+  const win=hs.slice(best.start,best.start+N);
+  const wi=win.map(w=>w.i);
+  const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+  const nz=a=>a.filter(x=>x!=null);
+  const spd=avg(nz(wi.map(i=>f.spd[i]))), gst=avg(nz(wi.map(i=>f.gst[i]))), dir=f.dir[wi[Math.floor(wi.length/2)]];
+  const gfs=f.m&&f.m.gfs&&nz(wi.map(i=>f.m.gfs.spd[i])), icon=f.m&&f.m.icon&&nz(wi.map(i=>f.m.icon.spd[i]));
+  let agree=null;
+  if(gfs&&gfs.length&&icon&&icon.length){ const d=Math.max(Math.abs(avg(gfs)-spd),Math.abs(avg(icon)-spd),Math.abs(avg(gfs)-avg(icon))); agree= d<=4?"Models agree": d<=8?"Models mixed":"Models disagree"; }
+  const wh=f.wh? avg(nz(wi.map(i=>m2ft(f.wh[i])))):null, wp=f.wp? avg(nz(wi.map(i=>f.wp[i]))):null;
+  const temp=avg(nz(wi.map(i=>f.temp[i])));
+  const gates=win.map(w=>w.gate).filter(Boolean), whys=win.map(w=>w.why).filter(Boolean);
+  const reason= gates[0] || mode(whys);
+  const dh=win.find(w=>(w.gate||w.why)===reason)||win[0];
+  const dis= day===todayLA? disagreement(spot,f):null;
+  return {score:Math.round(best.v*10)/10, from:+f.time[wi[0]].slice(11,13), to:+f.time[wi[wi.length-1]].slice(11,13)+1, spd,gst,dir,agree,wh,wp,temp,reason,detail:dh&&dh.detail,mine:dh&&dh.mine,hours:hs,idx,dis,window:N};
+}
+function mode(a){ if(!a.length) return null; const c={}; a.forEach(x=>c[x]=(c[x]||0)+1); return Object.keys(c).sort((x,y)=>c[y]-c[x])[0]; }
+
+/* ---------- helpers ---------- */
+const COMPASS=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+function compass(d){ return d==null?"–":COMPASS[Math.round(d/22.5)%16]; }
+function hhmm(h){ const x=((h+11)%12)+1; return x+(h<12?"a":"p"); }
+function mins(m){ return m<60? m+" min" : Math.floor(m/60)+"h"+String(m%60).padStart(2,"0"); }
+function cls(s,gate){ return gate?"gate": s>=7?"good": s>=4?"ok":"poor"; }
+function kiteFor(spd){ const kg=settings.weightLb*KG; const ideal=kg*2.175/Math.max(spd,6); const ks=settings.kites.length?settings.kites:[7,9,12,14]; return ks.reduce((a,k)=>Math.abs(k-ideal)<Math.abs(a-ideal)?k:a, ks[0]); }
+function dayLabel(d, i){ const dt=new Date(d+"T12:00:00"); const today=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+  const wd=dt.toLocaleDateString("en-US",{weekday:"short",timeZone:"America/Los_Angeles"}), md=dt.toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:"America/Los_Angeles"});
+  if(d===today) return ["Today",wd+" "+md]; const tm=new Date(new Date(today+"T12:00:00").getTime()+864e5).toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}); if(d===tm) return ["Tomorrow",wd+" "+md]; return [wd,md]; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function mapsUrl(spot){ const h=homeInfo(); return `https://www.google.com/maps/dir/?api=1&origin=${h.lat},${h.lon}&destination=${spot.plat},${spot.plon}&travelmode=driving`; }
+
+/* ---------- narrative + alerts ---------- */
+function bestPerDay(homeKey, maxDrive, style){
+  // {day: {spot, r, drive}} best spot within maxDrive from the given home for each day
+  const saveHome=settings.home; settings.home=homeKey;
+  const out={};
+  for(const d of dayKeys){
+    let best=null;
+    for(const spot of SPOTS){ const f=forecasts[spot.id]; if(!f) continue; const drive=driveMins(spot); if(drive==null||drive>maxDrive) continue;
+      const r=dayScore(spot,f,d,style); if(!r) continue; if(!best||r.score>best.r.score||(r.score===best.r.score&&drive<best.drive)) best={spot,r,drive}; }
+    out[d]=best;
+  }
+  settings.home=saveHome; return out;
+}
+function narrative(){
+  const bp=bestPerDay(settings.home, Math.max(settings.radius,180), settings.style);
+  const good=[], ok=[];
+  for(const d of dayKeys){ const b=bp[d]; if(!b) continue; const lbl=dayLabel(d)[0]; if(b.r.score>=6) good.push({d,lbl,b}); else if(b.r.score>=4) ok.push({d,lbl,b}); }
+  const reg=b=> b.spot.region==="Gorge"?"the Gorge":"the coast";
+  if(!good.length&&!ok.length){
+    const why=mode(dayKeys.map(d=>bp[d]&&bp[d].r.reason).filter(Boolean));
+    return `<b>Quiet stretch.</b> Nothing within ${mins(Math.max(settings.radius,180))} scores above 4 through ${dayLabel(dayKeys[dayKeys.length-1])[0]}${why?` — mostly "${why.toLowerCase()}"`:""}.`;
+  }
+  const parts=[];
+  if(good.length){ const g=good[0]; parts.push(`<b>${g.lbl} is the day:</b> ${esc(g.b.spot.name)} on ${reg(g.b)} at ${g.b.r.score.toFixed(1)} (${Math.round(g.b.r.spd)}g${Math.round(g.b.r.gst)} ${compass(g.b.r.dir)}, ${hhmm(g.b.r.from)}–${hhmm(g.b.r.to)}, ${mins(g.b.drive)})`);
+    if(good.length>1) parts.push(`${good.slice(1).map(x=>`${x.lbl} ${esc(x.b.spot.name)} ${x.b.r.score.toFixed(1)}`).join(", ")} also work`); }
+  if(ok.length) parts.push(`${ok.map(x=>x.lbl).join(" and ")} ${ok.length>1?"are":"is"} marginal`);
+  const dead=dayKeys.filter(d=>!bp[d]||bp[d].r.score<4).map(d=>dayLabel(d)[0]);
+  if(dead.length&&dead.length<dayKeys.length) parts.push(dead.length>2? "everything else looks dead" : `${dead.join(" and ")} ${dead.length>1?"look":"looks"} dead`);
+  return parts.join("; ")+".";
+}
+function alertDigest(){
+  // Simulate what the alert job would send right now under the rider's parameters.
+  const A=settings.alerts, out=[];
+  for(const hk of ["LO","BC"]){
+    const bp=bestPerDay(hk, A.maxDrive, settings.style);
+    const saveHome=settings.home; settings.home=hk;
+    const hits=[];
+    dayKeys.slice(0, A.lead+1).forEach((d,di)=>{
+      if(di===0 && !A.sameDay) return;
+      const dow=new Date(d+"T12:00:00").getDay(); if(!A.days.includes(dow)) return;
+      const rows=SPOTS.map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const drive=driveMins(spot); if(drive==null||drive>A.maxDrive) return null; const r=dayScore(spot,f,d,settings.style); return r?{spot,r,drive}:null; })
+        .filter(x=>x && x.r.score>=A.minScore && (!A.confidence || di===0 || x.r.agree==="Models agree"))
+        .sort((a,b)=>b.r.score-a.r.score||a.drive-b.drive);
+      if(rows.length) hits.push({d,rows});
+    });
+    settings.home=saveHome;
+    if(hits.length) out.push({home:HOMES[hk].name, hits});
+  }
+  return out;
+}
+function digestText(dg){
+  return dg.hits.slice(0,2).map(h=>`${dayLabel(h.d)[0]} looks great from ${dg.home} — ${h.rows.slice(0,3).map(x=>`${x.spot.name} ${x.r.score.toFixed(1)} (${mins(x.drive)})`).join(", ")}. Window ${hhmm(h.rows[0].r.from)}–${hhmm(h.rows[0].r.to)}.`).join(" ");
+}
+
+/* ---------- render ---------- */
+function computeAll(){
+  const tm=dayKeys[1];
+  const rows=SPOTS.map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const r=dayScore(spot,f,selDay,settings.style); if(!r) return null;
+    const rt= tm&&tm!==selDay? dayScore(spot,f,tm,settings.style):null; return {spot,f,r,rt,drive:driveMins(spot)??999}; }).filter(Boolean);
+  const byScore=(a,b)=> b.r.score-a.r.score || a.drive-b.drive;
+  if(settings.sort==="distance") return rows.sort((a,b)=> a.drive-b.drive || b.r.score-a.r.score);
+  if(settings.sort==="tomorrow") return rows.sort((a,b)=> ((b.rt?b.rt.score:b.r.score)-(a.rt?a.rt.score:a.r.score)) || a.drive-b.drive);
+  return rows.sort(byScore);
+}
+function render(){
+  document.getElementById("homeLO").setAttribute("aria-pressed",settings.home==="LO");
+  document.getElementById("homeBC").setAttribute("aria-pressed",settings.home==="BC");
+  document.getElementById("homeX").setAttribute("aria-pressed",settings.home==="X");
+  document.getElementById("homeX").textContent = settings.home==="X" ? (settings.custom.name||"Custom").split(" (")[0] : "Elsewhere";
+  document.querySelectorAll("[data-style]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.style===settings.style));
+  document.querySelectorAll("[data-sort]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.sort===settings.sort));
+  const rIn=document.getElementById("radius"); rIn.value=settings.radius; document.getElementById("radiusOut").textContent=mins(settings.radius);
+  const days=document.getElementById("days"); days.innerHTML=dayKeys.map((d,i)=>{const [a,b]=dayLabel(d,i); return `<button data-day="${d}" aria-pressed="${d===selDay}">${a}<small>${b}</small></button>`;}).join("");
+  const all=computeAll();
+  const stretch=settings.comfort.stretch!==false;
+  const within=all.filter(x=>x.drive<=settings.radius || (stretch && x.r.score>=8 && x.drive<=settings.radius*2)), beyond=all.filter(x=>!within.includes(x));
+  document.getElementById("narr").innerHTML = all.length? narrative(): "";
+  const hero=document.getElementById("hero");
+  const top=[...within].sort((a,b)=> b.r.score-a.r.score || a.drive-b.drive)[0];
+  if(!all.length){ hero.innerHTML=""; }
+  else if(top && top.r.score>=4){
+    hero.innerHTML=`<div class="hero"><div class="hpic${top.spot.photo===false?" nophoto":""}">${top.spot.photo===false?GLYPH:`<img src="img/${top.spot.id}.jpg" alt="" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${Math.round(top.r.spd)}g${Math.round(top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
+  } else {
+    const far=beyond.find(x=>x.r.score>=4);
+    hero.innerHTML=`<div class="hero"><div class="hbody"><div class="big" style="color:var(--gate)">${top?top.r.score.toFixed(1):"–"}</div><div><div class="lbl">${dayLabel(selDay)[0]} within ${mins(settings.radius)}</div><div class="name">Nothing worth the drive</div><div class="meta">${far? `Further out: ${esc(far.spot.name)} scores ${far.r.score.toFixed(1)} at ${mins(far.drive)}.` : "No spot in the forecast scores above 4 today."}</div></div></div></div>`;
+  }
+  const list=document.getElementById("list");
+  const rows = (showBeyond? all: within);
+  list.innerHTML = rows.length? rows.map(row).join("") : `<div class="empty">No spots within ${mins(settings.radius)} of ${esc(homeInfo().name)}. Widen the drive slider.</div>`;
+  const b=document.getElementById("beyond");
+  b.innerHTML = beyond.length && !showBeyond ? `${beyond.length} more spot${beyond.length>1?"s":""} beyond ${mins(settings.radius)} · <button id="showBeyond">show them</button>` : (showBeyond&&beyond.length? `<button id="showBeyond">hide spots beyond ${mins(settings.radius)}</button>`:"");
+  const sb=document.getElementById("showBeyond"); if(sb) sb.onclick=()=>{showBeyond=!showBeyond; render();};
+  if(openSpot){ const d=document.getElementById("detail-"+openSpot); const x=rows.find(r=>r.spot.id===openSpot); if(d&&x) d.innerHTML=detail(x); }
+}
+function row({spot,r,rt,drive}){
+  const c=cls(r.score,r.reason&&["Offshore","Nuking","Storms"].includes(r.reason));
+  const chips=[]; if(r.reason) chips.push(`<span class="chip ${c}">${esc(r.reason)}</span>`); if(r.agree&&selDay!==dayKeys[0]) chips.push(`<span class="chip">${r.agree}</span>`); if(r.dis) chips.push(`<span class="chip ok">${esc(r.dis.text)}</span>`);
+  if(settings.sort==="tomorrow"&&rt) chips.push(`<span class="chip ${cls(rt.score)}">Tomorrow ${rt.score.toFixed(1)}</span>`);
+  return `<div class="row" id="row-${spot.id}"><button class="head" aria-expanded="${openSpot===spot.id}" data-open="${spot.id}">
+    <div class="pic${spot.photo===false?" nophoto":""}">${spot.photo===false?GLYPH:`<img src="img/${spot.id}.jpg" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
+    <div style="min-width:0"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}</span></div>
+      <div class="wind">${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)} · ${hhmm(r.from)}–${hhmm(r.to)}${r.wh!=null?` · ${r.wh.toFixed(0)}ft`:""} ${chips.join(" ")}</div></div>
+    <div class="drive">${mins(drive)}<small>${drive>settings.radius?"beyond":(settings.home==="X"?"est.":"drive")}</small></div></button>
+    <div id="detail-${spot.id}"${openSpot===spot.id?"":" hidden"}>${openSpot===spot.id?detail({spot,r,drive}):""}</div></div>`;
+}
+function detail({spot,r,f}){
+  f=f||forecasts[spot.id];
+  const h=r.hours; const W=640,H=150,pad=22,bw=(W-pad*2)/h.length;
+  const maxS=Math.max(30,...h.map(x=>f.gst[x.i]||0))+2;
+  const y=v=>H-28-(v/maxS)*(H-50);
+  let svg=`<svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="Hourly wind for ${esc(spot.name)}">`;
+  [10,20,30].forEach(v=>{ if(v<maxS) svg+=`<line x1="${pad}" x2="${W-pad}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pad-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${v}</text>`; });
+  const winStart=h.findIndex(x=>+f.time[x.i].slice(11,13)===r.from);
+  if(winStart>=0) svg+=`<rect x="${pad+winStart*bw}" y="8" width="${bw*3}" height="${H-36}" fill="var(--accent)" opacity=".12" rx="3"/>`;
+  h.forEach((x,k)=>{ const s=f.spd[x.i]||0,g=f.gst[x.i]||0,d=f.dir[x.i]; const col=`var(--${cls(x.v,x.gate)})`; const cx=pad+k*bw+bw/2;
+    svg+=`<rect x="${pad+k*bw+2}" y="${y(s)}" width="${bw-4}" height="${y(0)-y(s)}" fill="${col}" rx="2"/>`;
+    svg+=`<line x1="${cx}" x2="${cx}" y1="${y(s)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5" opacity=".7"/><line x1="${cx-4}" x2="${cx+4}" y1="${y(g)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5"/>`;
+    if(d!=null) svg+=`<g transform="translate(${cx},${H-18}) rotate(${d+180})"><path d="M0,-6 L4,4 L0,2 L-4,4 Z" fill="var(--muted)"/></g>`;
+    const hr=+f.time[x.i].slice(11,13); if(hr%3===1) svg+=`<text x="${cx}" y="${H-2}" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--mono)">${hhmm(hr)}</text>`;
+  });
+  svg+=`</svg>`;
+  const plain=(spd,gst,dir)=> spd==null? "–" : `${Math.round(spd)} kn${gst!=null&&gst>spd+1?` gusting ${Math.round(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
+  const st=stationFor(spot.id);
+  const kv=[];
+  if(st) kv.push([`Wind measured now`,`${plain(st.spd,st.gst,st.dir)} <small>${esc(st.name)}, ${st.dist_mi} mi away, ${st.age_min} min ago${st.gst==null?" · no gust data":""}</small>`]);
+  else kv.push(["Wind measured now","<small>No public wind station within 25 mi of this spot</small>"]);
+  const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
+  const ni=forecasts[spot.id].time.findIndex(t=>t.slice(0,13)===nowLA); const raw=forecasts[spot.id];
+  const at=(k)=> ni>=0&&ni+k<raw.time.length? [raw.spd[ni+k],raw.gst[ni+k],raw.dir[ni+k],hhmm(+raw.time[ni+k].slice(11,13))] : null;
+  const h1=at(1), h3=at(3), h5=at(5);
+  kv.push(["Wind forecast · next hour", h1? `${plain(h1[0],h1[1],h1[2])} <small>model, for ${h1[3]}</small>` : "–"],
+          ["Wind forecast · in 3 hours", h3? `${plain(h3[0],h3[1],h3[2])} <small>model, for ${h3[3]}</small>` : "–"],
+          ["Wind forecast · in 5 hours", h5? `${plain(h5[0],h5[1],h5[2])} <small>model, for ${h5[3]}</small>` : "–"],
+          [`Best window · ${hhmm(r.from)}–${hhmm(r.to)}`,`${plain(r.spd,r.gst,r.dir)} <small>the best ${r.window}-hour stretch ${(l=>l==="Today"||l==="Tomorrow"?l.toLowerCase():new Date(selDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",timeZone:"America/Los_Angeles"}))(dayLabel(selDay)[0])}; this is what the score rates</small>`],
+          ["Kite",`${kiteFor(r.spd)}m <small>for ${settings.weightLb} lb in ${Math.round(r.spd)} kn</small>`],["Air",`${Math.round(r.temp)}°F`]);
+  if(r.wh!=null) kv.push(["Surf",`${r.wh.toFixed(1)}ft @ ${r.wp?r.wp.toFixed(0):"–"}s`]);
+  if(r.agree) kv.push(["Confidence",r.agree]);
+  const L=limitsFor(spot.id), ov=settings.overrides[spot.id]||{};
+  const hold= r.detail? `<p class="hold"><b>What's holding it back:</b> ${esc(r.detail)}${r.mine?` · <button class="link" data-limits="${spot.id}">adjust your limits</button>`:""}</p>` : (r.score>=7? `<p class="hold"><b>Nothing holding it back.</b> ${r.window}-hour window at ${Math.round(r.spd)} kn.</p>`:"");
+  const dis= r.dis? `<p class="hold warn"><b>Station disagrees:</b> ${esc(r.dis.o.name)} (${r.dis.o.dist_mi} mi) reads ${Math.round(r.dis.o.spd)} kn ${compass(r.dis.o.dir)} while the model says ${Math.round(r.dis.fc)} kn for this hour. Today's score uses the station.</p>`:"";
+  const cam=CAMS[spot.id]; 
+  const plan=`Heading to ${spot.name} ${dayLabel(selDay)[0]} ${hhmm(r.from)}–${hhmm(r.to)}, ${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)}. Directions: ${mapsUrl(spot)}`;
+  return `${svg}<div class="kv">${kv.map(([k,v])=>`<div><b>${k}</b><span>${v}</span></div>`).join("")}</div>${hold}${dis}
+    <p>${esc(spot.notes)}</p><p><b>Parking:</b> ${esc(spot.parking)}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
+    ${Object.keys(ov).length? `<p class="hold"><b>Your limits here:</b> ${Object.entries(ov).map(([k,v])=>`${k} ${v}`).join(", ")} · <button class="link" data-limits="${spot.id}">edit</button></p>`:""}
+    <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}</div>`;
+}
+
+/* ---------- sheets ---------- */
+const host=document.getElementById("sheetHost");
+function closeSheet(){ host.innerHTML=""; }
+function sheet(title, body){ host.innerHTML=`<div class="sheet" id="sheet"><div><h2>${title}<button id="closeSheet">Close</button></h2>${body}</div></div>`; document.getElementById("closeSheet").onclick=closeSheet; document.getElementById("sheet").onclick=e=>{ if(e.target.id==="sheet") closeSheet(); }; }
+function hint(sec,label,x){
+  if(!x) return "";
+  const l=label.toLowerCase();
+  if(sec==="gear"&&l.startsWith("kite")) return `Bring the ${kiteFor(x.r.spd)}m first; ${Math.round(x.r.spd)}g${Math.round(x.r.gst)} forecast`;
+  if(sec==="wear"&&l.startsWith("wetsuit")) return `${Math.round(x.r.temp)}°F air, water in the 50s`;
+  return "";
+}
+function checklist(spotId, editing){
+  const x=computeAll().find(a=>a.spot.id===spotId) || computeAll()[0];
+  const key="goc.check."+selDay; let ticks={}; try{ticks=JSON.parse(localStorage.getItem(key)||"{}")}catch(e){}
+  const C=settings.check;
+  const secs=[["gear","Gear",C.gear.map(l=>[l,hint("gear",l,x)])],["wear","Wear",C.wear.map(l=>[l,hint("wear",l,x)])],["logistics","Logistics",C.logistics.map(l=>[l,""])]];
+  const auto=[];
+  if(x&&x.spot.pass) auto.push(["Oregon State Parks pass","Day-use lot at "+x.spot.name]);
+  if(x&&x.spot.region==="Gorge") auto.push(["Day-use fee for the launch",""]);
+  if(x&&x.spot.region!=="Gorge") auto.push(["Gas before the coast range","101 towns close early"]);
+  if(auto.length) secs.push(["auto","For "+(x?x.spot.name:"this spot"),auto]);
+  const sec=(k,t,items)=>`<h3>${esc(t)}</h3>`+items.map(([l,w],i)=>{const id=k+"-"+l.replace(/\W+/g,"_"); return editing&&k!=="auto"
+    ? `<li><button class="rm" data-rm="${k}" data-i="${i}" aria-label="Remove ${esc(l)}">×</button><label>${esc(l)}</label></li>`
+    : `<li class="${w?"why":""}"><input type="checkbox" id="c-${id}" data-k="${id}" ${ticks[id]?"checked":""}><label for="c-${id}">${esc(l)}${w?`<small>${esc(w)}</small>`:""}</label></li>`;}).join("")
+    + (editing&&k!=="auto"? `<li class="add"><input type="text" id="add-${k}" placeholder="Add to ${t.toLowerCase()}…"><button class="btn" data-add="${k}">Add</button></li>`:"");
+  sheet(`Checklist${x?" · "+esc(x.spot.name):""}`, `<ul class="check">${secs.map(([k,t,it])=>sec(k,t,it)).join("")}</ul>
+    <div class="actions" style="margin-top:12px">${editing? `<button class="btn primary" id="doneEdit">Done</button><button class="btn" id="resetCheck">Restore defaults</button>` : `<button class="btn" id="editCheck">Edit list</button>`}</div>
+    <p style="color:var(--muted);font-size:13px;margin-top:10px">${editing?"Your changes are saved on this phone and used every time.":"Ticks reset each day. The items marked for the spot are added automatically."}</p>`);
+  host.querySelectorAll("input[type=checkbox]").forEach(c=>c.onchange=()=>{ ticks[c.dataset.k]=c.checked; try{localStorage.setItem(key,JSON.stringify(ticks))}catch(e){} });
+  const e1=document.getElementById("editCheck"); if(e1) e1.onclick=()=>checklist(spotId,true);
+  const e2=document.getElementById("doneEdit"); if(e2) e2.onclick=()=>checklist(spotId,false);
+  const e3=document.getElementById("resetCheck"); if(e3) e3.onclick=()=>{ settings.check=JSON.parse(JSON.stringify(DEFAULT_CHECK)); saveSettings(); checklist(spotId,true); };
+  host.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ C[b.dataset.rm].splice(+b.dataset.i,1); saveSettings(); checklist(spotId,true); });
+  host.querySelectorAll("[data-add]").forEach(b=>{ const inp=document.getElementById("add-"+b.dataset.add); const go=()=>{ const v=inp.value.trim(); if(!v) return; C[b.dataset.add].push(v); saveSettings(); checklist(spotId,true); setTimeout(()=>{const n=document.getElementById("add-"+b.dataset.add); n&&n.focus();},0); }; b.onclick=go; inp.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } }; });
+}
+function placeSheet(){
+  const c=settings.custom;
+  sheet("Where are you?", `<p style="font-size:14px;color:var(--muted);margin:0 0 8px">Pick a town, or paste coordinates from Google Maps (long-press a point, tap the numbers to copy). Drive times from here are estimates by road distance.</p>
+    <div class="kites" id="places">${PLACES.map(([n,la,lo])=>`<button data-p="${n}" data-la="${la}" data-lo="${lo}" aria-pressed="${c.name===n}">${esc(n)}</button>`).join("")}</div>
+    <div class="field"><label for="plname">Name</label><input type="text" id="plname" value="${esc(c.name||"")}" style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
+    <div class="field"><label for="plll">Coordinates (lat, lon)</label><input type="text" id="plll" value="${c.lat!=null?c.lat+", "+c.lon:""}" placeholder="45.52, -122.67" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
+    <div class="actions"><button class="btn primary" id="plSave">Use this location</button><button class="btn" id="plGPS">Use my current location</button></div>`);
+  document.getElementById("plGPS").onclick=()=>{ const b=document.getElementById("plGPS"); if(!navigator.geolocation){ b.textContent="Location not available"; return; } b.textContent="Locating…";
+    navigator.geolocation.getCurrentPosition(p=>{ settings.custom={name:"Current location",lat:+p.coords.latitude.toFixed(4),lon:+p.coords.longitude.toFixed(4)}; settings.home="X"; saveSettings(); closeSheet(); render(); }, ()=>{ b.textContent="Couldn't get location — allow it in Settings, or paste coordinates"; }, {enableHighAccuracy:false,timeout:12000,maximumAge:300000}); };
+  host.querySelectorAll("#places button").forEach(b=>b.onclick=()=>{ document.getElementById("plname").value=b.dataset.p; document.getElementById("plll").value=b.dataset.la+", "+b.dataset.lo; host.querySelectorAll("#places button").forEach(o=>o.setAttribute("aria-pressed",o===b)); });
+  document.getElementById("plSave").onclick=()=>{ const m=document.getElementById("plll").value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); if(!m){ document.getElementById("plll").focus(); return; }
+    settings.custom={name:document.getElementById("plname").value.trim()||"Custom spot",lat:+m[1],lon:+m[2]}; settings.home="X"; saveSettings(); closeSheet(); render(); };
+}
+const COMFORT_DEF=[["minWind","Minimum wind I'll go out for","kn",6,20,1],["maxWind","Maximum sustained wind","kn",18,40,1],["maxGust","Maximum gust","kn",18,45,1],["maxSurf","Maximum surf","ft",1,15,1],["minHours","Minimum session length","h",1,6,1]];
+function comfortSliders(vals,prefix){
+  return `<ul class="check">${COMFORT_DEF.map(([k,l,u,lo,hi,step])=>`<li style="display:block"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${l}</b><span class="chip" id="${prefix}l-${k}">${vals[k]} ${u}</span></div><input type="range" min="${lo}" max="${hi}" step="${step}" value="${vals[k]}" data-c="${k}" data-u="${u}" style="width:100%;accent-color:var(--accent)"></li>`).join("")}
+  <li><input type="checkbox" id="${prefix}-stretch" ${vals.stretch!==false?"checked":""}><label for="${prefix}-stretch">I'll drive further for a great day <small>(spots scoring 8+ show even when beyond the radius)</small></label></li></ul>`;
+}
+function bindComfort(prefix, target, after){
+  host.querySelectorAll(`input[data-c]`).forEach(r=>r.oninput=()=>{ target[r.dataset.c]=+r.value; document.getElementById(prefix+"l-"+r.dataset.c).textContent=r.value+" "+r.dataset.u; after(); });
+  const st=document.getElementById(prefix+"-stretch"); if(st) st.onchange=()=>{ target.stretch=st.checked; after(); };
+}
+function limitsSheet(spotId){
+  const spot=SPOTS.find(s=>s.id===spotId); const ov=settings.overrides[spotId]||{};
+  const vals={...settings.comfort,...ov};
+  sheet(`Limits · ${esc(spot.name)}`, `<p style="color:var(--muted);font-size:13px;margin:0 0 6px">Overrides for this spot only. Anything you don't touch follows your comfort profile.</p>
+    ${comfortSliders(vals,"o")}
+    <div class="actions" style="margin-top:8px"><button class="btn primary" id="oDone">Done</button><button class="btn" id="oClear">Use my defaults here</button></div>`);
+  const tmp={...vals};
+  bindComfort("o", tmp, ()=>{ const o={}; for(const [k] of COMFORT_DEF) if(tmp[k]!==settings.comfort[k]) o[k]=tmp[k]; if(tmp.stretch!==settings.comfort.stretch) o.stretch=tmp.stretch; settings.overrides[spotId]=o; saveSettings(); render(); });
+  document.getElementById("oDone").onclick=closeSheet;
+  document.getElementById("oClear").onclick=()=>{ delete settings.overrides[spotId]; saveSettings(); render(); closeSheet(); };
+}
+function alertsSheet(){
+  const A=settings.alerts; const DN=["Su","Mo","Tu","We","Th","Fr","Sa"];
+  const dg=alertDigest();
+  const preview= dg.length? dg.map(d=>`<div class="notif"><div class="ic">BB</div><div><span class="when">${hhmm(A.hour)}</span><div class="t">Bistué Boarding</div><div class="b">${esc(digestText(d))}</div></div></div>`).join("")
+    : `<div class="notif"><div class="ic">BB</div><div><div class="t">No alert would fire right now</div><div class="b">Nothing within ${mins(A.maxDrive)} scores ${A.minScore}+ in the next ${A.lead} day${A.lead>1?"s":""}${A.confidence?" with the models agreeing":""}. Lower the threshold to see what a digest looks like.</div></div></div>`;
+  const bp=bestPerDay(settings.home==="X"?"LO":settings.home, A.maxDrive, settings.style);
+  const strip=`<div class="strip7">${dayKeys.map(d=>{const b=bp[d]; const c=b?cls(b.r.score):"gate"; return `<div><small>${dayLabel(d)[0].slice(0,3)}</small><b style="color:var(--${c})">${b?b.r.score.toFixed(1):"–"}</b><span>${b?esc(b.spot.name.split(" /")[0].split(" (")[0]):"—"}</span></div>`;}).join("")}</div>`;
+  sheet("Alerts", `<p style="color:var(--muted);font-size:13px;margin:0 0 8px">One push notification per refresh, best spot first, never one per spot. In the real app these go to your phone; here's what would be sent with the current forecast.</p>
+    ${preview}
+    <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-family:var(--body)">When to tell me</h3>
+    <ul class="check">
+      <li style="display:block"><div style="display:flex;justify-content:space-between"><b>Only if a spot scores at least</b><span class="chip" id="al-minScore">${A.minScore}</span></div><input type="range" min="5" max="10" step="0.5" value="${A.minScore}" data-a="minScore" style="width:100%;accent-color:var(--accent)"></li>
+      <li style="display:block"><div style="display:flex;justify-content:space-between"><b>…within this drive of either house</b><span class="chip" id="al-maxDrive">${mins(A.maxDrive)}</span></div><input type="range" min="30" max="300" step="15" value="${A.maxDrive}" data-a="maxDrive" style="width:100%;accent-color:var(--accent)"></li>
+      <li style="display:block"><div style="display:flex;justify-content:space-between"><b>Look ahead</b><span class="chip" id="al-lead">${A.lead} day${A.lead>1?"s":""}</span></div><input type="range" min="1" max="5" step="1" value="${A.lead}" data-a="lead" style="width:100%;accent-color:var(--accent)"></li>
+      <li style="display:block"><b>Days I can go</b><div class="dayspick" style="margin-top:6px">${DN.map((n,i)=>`<button data-d="${i}" aria-pressed="${A.days.includes(i)}">${n}</button>`).join("")}</div></li>
+      <li style="display:block"><div style="display:flex;justify-content:space-between"><b>Deliver at</b><span class="chip" id="al-hour">${hhmm(A.hour)}</span></div><input type="range" min="6" max="21" step="1" value="${A.hour}" data-a="hour" style="width:100%;accent-color:var(--accent)"></li>
+      <li><input type="checkbox" id="al-sameDay" ${A.sameDay?"checked":""}><label for="al-sameDay">Also alert me in the morning if today turns good</label></li>
+      <li><input type="checkbox" id="al-confidence" ${A.confidence?"checked":""}><label for="al-confidence">Only when the forecast models agree <small>skips the 9s that two models disagree about</small></label></li>
+      <li style="display:block"><div style="display:flex;justify-content:space-between"><b>At most</b><span class="chip" id="al-cap">${A.cap} a day</span></div><input type="range" min="1" max="3" step="1" value="${A.cap}" data-a="cap" style="width:100%;accent-color:var(--accent)"></li>
+      <li><input type="checkbox" id="al-email" ${A.email?"checked":""}><label for="al-email">Sunday 6pm weekly outlook by email</label></li>
+    </ul>
+    <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-family:var(--body)">Weekly outlook · preview from ${esc(HOMES[settings.home==="X"?"LO":settings.home].name)}</h3>
+    <div class="narr" style="font-size:14px">${narrative()}</div>${strip}
+    <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-family:var(--body)">Home-screen widget · native build</h3>
+    ${widgetMock()}
+    <p style="color:var(--muted);font-size:13px;margin-top:8px">Quiet hours ${hhmm(A.quietFrom)}–${hhmm(A.quietTo)}. A spot-day you've been told about isn't repeated unless its score moves by 2 or more.</p>`);
+  host.querySelectorAll("[data-a]").forEach(r=>r.oninput=()=>{ A[r.dataset.a]=+r.value; saveSettings(); alertsSheet(); });
+  host.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{ const d=+b.dataset.d; A.days=A.days.includes(d)?A.days.filter(x=>x!==d):[...A.days,d].sort(); saveSettings(); alertsSheet(); });
+  ["sameDay","confidence","email"].forEach(k=>{ const el=document.getElementById("al-"+k); el.onchange=()=>{ A[k]=el.checked; saveSettings(); alertsSheet(); }; });
+}
+function widgetMock(){
+  const all=computeAll().filter(x=>x.drive<=settings.radius); const t=all[0];
+  if(!t) return `<div class="widget"><div class="w1">Best bet · ${dayLabel(selDay)[0]}</div><div class="w2">–</div><div><div class="w3">Nothing in range</div><div class="w4">${esc(homeInfo().name)}</div></div></div>`;
+  return `<div class="widget"><div class="w1">Best bet · ${dayLabel(selDay)[0]}</div><div class="w2">${t.r.score.toFixed(1)}</div><div><div class="w3">${esc(t.spot.name.split(" /")[0])}</div><div class="w4">${Math.round(t.r.spd)}g${Math.round(t.r.gst)} ${compass(t.r.dir)} · ${hhmm(t.r.from)}–${hhmm(t.r.to)} · ${mins(t.drive)}</div></div></div>`;
+}
+function riderSheet(){
+  const ks=[5,6,7,8,9,10,11,12,13,14,15,17];
+  sheet("Rider", `<div class="field"><label for="w">Weight (lb)</label><input type="number" id="w" value="${settings.weightLb}" min="90" max="320"></div>
+    <div class="field"><label>Kites in the quiver (m²)</label><div class="kites" id="kites">${ks.map(k=>`<button data-k="${k}" aria-pressed="${settings.kites.includes(k)}">${k}</button>`).join("")}</div></div>
+    <p style="color:var(--muted);font-size:13px">Kite suggestions use weight × 2.175 ÷ wind knots, then snap to the nearest kite you own.</p>
+    <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 4px;font-family:var(--body)">Comfort · what you're happy riding</h3>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 6px">The style switch on the home screen says what kind of day you want. These say what you'll put up with. Each can be overridden per spot from the spot's detail.</p>
+    ${comfortSliders(settings.comfort,"c")}
+    <div class="actions" style="margin-top:8px"><button class="btn" id="resetComfort">Reset comfort</button></div>`);
+  bindComfort("c", settings.comfort, ()=>{saveSettings(); render();});
+  document.getElementById("resetComfort").onclick=()=>{ settings.comfort={...DEFAULT_COMFORT}; saveSettings(); render(); riderSheet(); };
+  document.getElementById("w").onchange=e=>{ settings.weightLb=+e.target.value||185; saveSettings(); render(); };
+  host.querySelectorAll("#kites button").forEach(b=>b.onclick=()=>{ const k=+b.dataset.k; settings.kites=settings.kites.includes(k)? settings.kites.filter(x=>x!==k):[...settings.kites,k].sort((a,b)=>a-b); b.setAttribute("aria-pressed",settings.kites.includes(k)); saveSettings(); render(); });
+}
+function scaleSVG(k, rows){
+  // Horizontal scale with the factor's zones (for the current style) and a dot per spot at its best-window value.
+  const st=STYLES[settings.style]; const W=640,H=64,pad=10; let min,max,zones,unit,val,fmt;
+  if(k==="speed"){ min=0;max=40;unit="kn"; zones=[[0,st.lo-4,"poor","Too light"],[st.lo-4,st.lo,"ok","Light"],[st.lo,st.hi,"good","Rides"],[st.hi,st.hi+6,"ok","Strong"],[st.hi+6,NUKE,"poor","Too strong"],[NUKE,40,"gate","Gate"]]; val=r=>r.spd; fmt=v=>Math.round(v)+""; }
+  else if(k==="gust"){ min=1;max=2.2;unit="× avg"; zones=[[1,1.3,"good","Clean"],[1.3,1.5,"ok","Bumpy"],[1.5,1.9,"poor","Gusty"],[1.9,2.2,"poor","Bad"]]; val=r=> r.spd>=5? Math.min(r.gst/Math.max(r.spd,1),2.2):null; fmt=v=>v.toFixed(1); }
+  else if(k==="wave"){ min=0;max=12;unit="ft"; zones= settings.style==="wave"? [[0,1.5,"ok","Flat"],[1.5,7,"good","Waves"],[7,9,"ok","Big"],[9,12,"poor","Huge"]] : settings.style==="foil"? [[0,3,"good","OK"],[3,5,"ok","Bumpy"],[5,12,"poor","Big"]] : [[0,5,"good","OK"],[5,8,"ok","Bumpy"],[8,12,"poor","Big"]]; val=r=>r.wh; fmt=v=>v.toFixed(0); }
+  else return "";
+  const x=v=>pad+(Math.min(Math.max(v,min),max)-min)/(max-min)*(W-pad*2);
+  let svg=`<svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="${k} scale">`;
+  zones.forEach(([a,b,c,l])=>{ svg+=`<rect x="${x(a)}" y="22" width="${x(b)-x(a)}" height="12" fill="var(--${c})" opacity=".35" rx="2"/><text x="${(x(a)+x(b))/2}" y="46" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--body)">${l}</text>`; });
+  zones.forEach(([a])=>{ svg+=`<text x="${x(a)}" y="60" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--mono)">${fmt(a)}</text>`; });
+  svg+=`<text x="${W-pad}" y="60" font-size="10" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${fmt(max)} ${unit}</text>`;
+  const pts=rows.map(r=>({n:r.spot.name.split(" /")[0].split(" (")[0],v:val(r.r)})).filter(p=>p.v!=null).sort((a,b)=>a.v-b.v);
+  pts.forEach((p,i)=>{ const cx=x(p.v); const up=i%2===0; svg+=`<circle cx="${cx}" cy="28" r="4" fill="var(--fg)" stroke="var(--surface)" stroke-width="1.5"/>`; if(pts.length<=8 || i%2===0) svg+=`<text x="${cx}" y="${up?14:20}" font-size="9" text-anchor="middle" fill="var(--fg)" font-family="var(--body)">${esc(p.n.slice(0,11))}</text>`; });
+  svg+=`</svg>`;
+  return svg;
+}
+function howSheet(){
+  const W=settings.weights;
+  const rows=computeAll().filter(x=>x.drive<=settings.radius);
+  const st=STYLES[settings.style];
+  const dirRows=rows.map(r=>`${esc(r.spot.name.split(" /")[0].split(" (")[0])} ${compass(r.r.dir)}${inSectors(r.r.dir,r.spot.dir.off)?" (offshore)":inSectors(r.r.dir,r.spot.dir.best)?" (side-on)":inSectors(r.r.dir,r.spot.dir.work)?" (works)":" (cross-off)"}`).join(" · ");
+  const wl=[["speed","Wind speed",`${st.label}: rides ${st.lo}–${st.hi} kn, sweet spot ${st.peak}. Dots are each spot's best window ${dayLabel(selDay)[0].toLowerCase()}.`],
+            ["dir","Direction","against the spot's own rules. Side-on is best, cross-shore is fine, offshore zeroes the score outright."+(dirRows?`<br>${dayLabel(selDay)[0]}: ${dirRows}`:"")],
+            ["gust","Gusts","gust ÷ average wind. Up to 1.3× is clean; 1.9× and worse is a penalty."],
+            ["wave","Surf",`(coast spots) ${settings.style==="wave"?"1.5–7 ft is the target for wave riding":settings.style==="foil"?"penalized above 3 ft for foil":"penalized above 5 ft for freeride"}.`],
+            ["wx","Weather","fog halves it, likely rain trims it, thunderstorms zero it."]];
+  const lab=v=> v===0?"Ignored": v<0.75?"Light": v<=1.25?"Normal": v<1.75?"Heavy":"Double";
+  sheet("How it scores", `<div class="how"><p>Every daylight hour (7a–7p) at every spot gets a 0–10 score. The day's score is its best ${settings.comfort.minHours}-hour window, and that window is what the row shows. The slider sets how much a factor <em>counts</em>; the scale under it shows what the factor <em>measures</em> and where each spot sits right now.</p>
+  <ul class="check" id="weights">${wl.map(([k,n,d])=>`<li style="display:block"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${n}</b><span class="chip" id="wl-${k}">${lab(W[k])}</span></div><input type="range" min="0" max="2" step="0.25" value="${W[k]}" data-w="${k}" style="width:100%;accent-color:var(--accent)"><div class="ticks"><span>Ignored</span><span>Light</span><span>Normal</span><span>Heavy</span><span>Double</span></div>${scaleSVG(k,rows)}<small style="color:var(--muted)">${d}</small></li>`).join("")}</ul>
+  <div class="actions" style="margin:10px 0"><button class="btn" id="resetW">Reset weights</button></div>
+  <p><b>Reading the rows:</b> "18g24 NW · 2p–5p" means 18 knots average, gusting 24, wind from the northwest, best between 2 and 5 pm. Open a row for the plain-English version.</p>
+  <p>Three hard gates set a score to 0 no matter what: offshore wind, 35+ kn sustained or 38+ gusts, and thunderstorms.</p>
+  <p><b>Confidence</b> compares three forecast models over the best window. "Models agree" means they're within 4 kn of each other.</p>
+  <p>Forecasts are Open-Meteo (NOAA HRRR/NBM blend, GFS, ICON) and its marine model, refreshed every time you open the app. Drive times from Lake Oswego and Bay City are typical, not live; the Directions button opens Google Maps with current traffic.</p>
+  <p style="font-size:12px;color:var(--muted)">Spot photos via Wikimedia Commons: Bayocean Spit: Tedder (CC BY-SA 4.0); Cape Lookout: Dougtone (CC BY-SA 2.0); Floras Lake: Bastique (CC BY-SA 3.0); Florence South Jetty: Bonnie Moreland from Oregon, United States (Public domain); Fort Stevens / Clatsop Spit: Flickr contributor (CC BY 2.0); Gearhart: Meronim (CC BY-SA 3.0); Hood River Sandbar: Adam Jones, Ph.D. (CC BY-SA 3.0); Manzanita / Nehalem Bay: Bob Heims, U.S. Army Corps of Engineers (Public domain); Newport South Jetty: User:Cacophony (CC BY 2.5); Oceanside: M.O. Stevens (CC BY-SA 3.0); Pacific City: Ennetws (Public domain); Roads End, Lincoln City: Rick Obst (CC BY 4.0); Rockaway Beach: Gary Halvorson, Oregon State Archives (CC BY 4.0); Rufus (Rock Pile): Joe Mabel (CC BY-SA 4.0); Stevenson: LegalTech (CC BY 4.0).</p></div>`);
+  host.querySelectorAll("[data-w]").forEach(r=>r.oninput=()=>{ settings.weights[r.dataset.w]=+r.value; document.getElementById("wl-"+r.dataset.w).textContent=lab(+r.value); saveSettings(); render(); });
+  document.getElementById("resetW").onclick=()=>{ settings.weights={...DEFAULT_WEIGHTS}; saveSettings(); render(); howSheet(); };
+}
+
+/* ---------- events ---------- */
+document.getElementById("homeLO").onclick=()=>{settings.home="LO";saveSettings();render();};
+document.getElementById("homeBC").onclick=()=>{settings.home="BC";saveSettings();render();};
+document.getElementById("homeX").onclick=()=>{ if(settings.home==="X") placeSheet(); else { settings.home="X"; saveSettings(); render(); placeSheet(); } };
+document.querySelectorAll("[data-style]").forEach(b=>b.onclick=()=>{settings.style=b.dataset.style;saveSettings();render();});
+document.querySelectorAll("[data-sort]").forEach(b=>b.onclick=()=>{settings.sort=b.dataset.sort;saveSettings();render();});
+document.documentElement.removeAttribute("data-look");
+document.getElementById("radius").oninput=e=>{settings.radius=+e.target.value;saveSettings();render();};
+document.getElementById("days").onclick=e=>{const b=e.target.closest("[data-day]"); if(b){selDay=b.dataset.day;render();}};
+document.getElementById("list").onclick=e=>{ const c=e.target.closest("[data-check]"); if(c){checklist(c.dataset.check);return;}
+  const lm=e.target.closest("[data-limits]"); if(lm){limitsSheet(lm.dataset.limits);return;}
+  const sh=e.target.closest("[data-share]"); if(sh){ const txt=sh.dataset.share; const done=()=>{sh.textContent="Copied — paste to a buddy"; setTimeout(()=>sh.textContent="Share plan",2500);};
+    try{ navigator.clipboard.writeText(txt).then(done).catch(()=>{ const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy")}catch(_){} ta.remove(); done(); }); }catch(_){ done(); }
+    return; } const b=e.target.closest("[data-open]"); if(!b) return; openSpot=openSpot===b.dataset.open?null:b.dataset.open; render(); if(openSpot){const el=document.getElementById("row-"+openSpot); el&&el.scrollIntoView({block:"nearest",behavior:"smooth"});} };
+document.getElementById("openCheck").onclick=()=>checklist(openSpot);
+document.getElementById("openSettings").onclick=riderSheet;
+document.getElementById("openHow").onclick=howSheet;
+document.getElementById("openAlerts").onclick=alertsSheet;
+
+/* ---------- data ---------- */
+function ingest(docs, fetchedAt){
+  forecasts={}; docs.forEach(d=>{ if(d&&d.spotId) forecasts[d.spotId]=d; });
+  const first=Object.values(forecasts)[0];
+  if(!first){ document.getElementById("sub").textContent="No forecast loaded yet."; document.getElementById("list").innerHTML=`<div class="empty">Forecast data hasn't been loaded into this page yet. Once it is, every spot within your drive radius shows up here, ranked.</div>`; return; }
+  const today=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+  dayKeys=[...new Set(first.time.map(t=>t.slice(0,10)))].filter(d=>d>=today);
+  if(!dayKeys.length) dayKeys=[...new Set(first.time.map(t=>t.slice(0,10)))];
+  if(!selDay||!dayKeys.includes(selDay)) selDay=dayKeys[0];
+  const fa=new Date(fetchedAt||first.fetchedAt);
+  const ageMin=Math.round((Date.now()-fa.getTime())/60000);
+  const age= ageMin<60? ageMin+" min ago" : ageMin<1440? Math.round(ageMin/60)+"h ago" : Math.round(ageMin/1440)+"d ago";
+  document.getElementById("sub").textContent="Updated "+age+(ageMin>360?" (stale)":"")+" · knots · "+SPOTS.length+" spots";
+  render();
+}
+const NWS_STATIONS = {"stevenson":[{"id":"ODT78","name":"I84 WB at Cascade Locks MP44.57","kind":"nws","lat":45.66931,"lon":-121.88484,"dist_mi":1.8},{"id":"LGFO3","name":"LOG CREEK","kind":"nws","lat":45.49658,"lon":-121.89646,"dist_mi":13.7}],"hoodriver":[{"id":"K4S2","name":"Ken Jernstedt Airfield","kind":"nws","lat":45.67457,"lon":-121.53493,"dist_mi":3.0},{"id":"PNGO","name":"PINEGROVE","kind":"nws","lat":45.65222,"lon":-121.50917,"dist_mi":4.4}],"rufus":[{"id":"E2137","name":"EW2137 Wasco","kind":"nws","lat":45.62733,"lon":-120.60017,"dist_mi":7.8},{"id":"E0859","name":"EW0859 Centerville","kind":"nws","lat":45.73917,"lon":-120.92683,"dist_mi":9.9}],"fortstevens":[{"id":"KAST","name":"Astoria, Astoria Regional Airport","kind":"nws","lat":46.15694,"lon":-123.8825,"dist_mi":5.2}],"gearhart":[{"id":"KAST","name":"Astoria, Astoria Regional Airport","kind":"nws","lat":46.15694,"lon":-123.8825,"dist_mi":9.1},{"id":"ODT09","name":"US26 WB at Quartz Creek MP24.23","kind":"nws","lat":45.84225,"lon":-123.51849,"dist_mi":23.6}],"manzanita":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":19.3},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":21.7}],"rockaway":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":12.9},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":15.0}],"bayocean":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":8.7},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":10.1}],"oceanside":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":8.1},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":8.1}],"capelookout":[{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":8.5},{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":10.5}],"pacificcity":[{"id":"AT297","name":"PACCTY-2 Pacific City","kind":"nws","lat":45.19683,"lon":-123.96733,"dist_mi":0.3},{"id":"CDFO3","name":"CEDAR","kind":"nws","lat":45.21167,"lon":-123.77194,"dist_mi":9.7}],"roadsend":[{"id":"AP682","name":"W7KKE-3 Road's End","kind":"nws","lat":45.011,"lon":-124.00583,"dist_mi":0.2},{"id":"AT297","name":"PACCTY-2 Pacific City","kind":"nws","lat":45.19683,"lon":-123.96733,"dist_mi":13.1}],"newport":[{"id":"KONP","name":"Newport, Newport Municipal Airport","kind":"nws","lat":44.58028,"lon":-124.05806,"dist_mi":2.1},{"id":"AS531","name":"YACHTS Yachats","kind":"nws","lat":44.34303,"lon":-124.09212,"dist_mi":18.5}],"florence":[],"floras":[]};
+let lastFetchedAt=null, refreshing=false;
+function setRefreshUI(state,msg){
+  const b=document.getElementById("refreshBtn"); if(!b) return;
+  b.hidden=false; b.disabled=state==="busy";
+  b.textContent= state==="busy"? "Refreshing…" : "Refresh now";
+  const n=document.getElementById("refreshNote"); if(n){ n.textContent=msg||""; n.hidden=!msg; }
+}
+const DAYS=5, TZ="America/Los_Angeles";
+async function fetchJSON(url, ms=25000){
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms);
+  try{ const r=await fetch(url,{signal:c.signal}); if(!r.ok) throw new Error(r.status); return await r.json(); } finally{ clearTimeout(t); }
+}
+const rnd=(xs,nd=1)=>xs.map(v=>v==null?null:+v.toFixed(nd));
+async function fetchForecasts(){
+  // One Open-Meteo call for all spots (multi-location), one marine call for the coast spots.
+  const lat=SPOTS.map(s=>s.lat).join(","), lon=SPOTS.map(s=>s.lon).join(",");
+  const q=`latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code&models=best_match,gfs_seamless,icon_seamless&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  const w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+q, 40000);
+  const arr=Array.isArray(w)?w:[w];
+  const now=new Date().toISOString().slice(0,19)+"+00:00";
+  const docs={};
+  SPOTS.forEach((s,i)=>{ const d=arr[i]; if(!d||!d.hourly) return; const h=d.hourly; const col=(n,m="best_match")=>h[`${n}_${m}`]||h[n]||new Array(h.time.length).fill(null); const cur=d.current||{}; const cv=n=>cur[`${n}_best_match`]??cur[n]??null;
+    docs[s.id]={spotId:s.id,fetchedAt:now,time:h.time,spd:rnd(col("wind_speed_10m")),gst:rnd(col("wind_gusts_10m")),dir:rnd(col("wind_direction_10m"),0),temp:rnd(col("temperature_2m"),0),pop:rnd(col("precipitation_probability"),0),code:col("weather_code"),vis:rnd(col("visibility"),0),
+      m:{gfs:{spd:rnd(col("wind_speed_10m","gfs_seamless")),gst:rnd(col("wind_gusts_10m","gfs_seamless")),dir:rnd(col("wind_direction_10m","gfs_seamless"),0)},icon:{spd:rnd(col("wind_speed_10m","icon_seamless")),gst:rnd(col("wind_gusts_10m","icon_seamless")),dir:rnd(col("wind_direction_10m","icon_seamless"),0)}},
+      now:{time:cur.time,spd:cv("wind_speed_10m"),gst:cv("wind_gusts_10m"),dir:cv("wind_direction_10m"),temp:cv("temperature_2m"),code:cv("weather_code")}}; });
+  const wave=SPOTS.filter(s=>s.waves);
+  try{
+    const mq=`latitude=${wave.map(s=>s.lat).join(",")}&longitude=${wave.map(s=>s.lon).join(",")}&hourly=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
+    const m=await fetchJSON("https://marine-api.open-meteo.com/v1/marine?"+mq, 40000); const marr=Array.isArray(m)?m:[m];
+    wave.forEach((s,i)=>{ const d=marr[i]; if(!d||!d.hourly||!docs[s.id]) return; const mh=d.hourly; Object.assign(docs[s.id],{wh:rnd(mh.wave_height,2),wp:rnd(mh.wave_period,1),wd:rnd(mh.wave_direction,0),sh:rnd(mh.swell_wave_height,2),sp:rnd(mh.swell_wave_period,1)}); });
+  }catch(e){ console.warn("marine failed",e); }
+  return {docs:Object.values(docs), fetchedAt:now};
+}
+async function fetchStations(){
+  // NWS/METAR observations, nearest two per spot, fetched in parallel; buoys need a server (no CORS) and are a follow-up.
+  const ids=[...new Set(Object.values(NWS_STATIONS).flat().map(x=>x.id))];
+  const nowMs=Date.now(); const readings={};
+  await Promise.all(ids.map(async id=>{ try{ const d=(await fetchJSON(`https://api.weather.gov/stations/${id}/observations/latest`,15000)).properties;
+    const spd=d.windSpeed&&d.windSpeed.value, gst=d.windGust&&d.windGust.value, dir=d.windDirection&&d.windDirection.value;
+    readings[id]={time:d.timestamp,spd:spd==null?null:+(spd/1.852).toFixed(1),gst:gst==null?null:+(gst/1.852).toFixed(1),dir,age_min:Math.round((nowMs-Date.parse(d.timestamp))/60000)}; }catch(e){} }));
+  const out={}; for(const [sid,lst] of Object.entries(NWS_STATIONS)){ out[sid]=lst.filter(x=>readings[x.id]).map(x=>({id:x.id,name:x.name,kind:"nws",dist_mi:x.dist_mi,...readings[x.id]})); }
+  return out;
+}
+async function refreshAll(manual){
+  if(refreshing) return; refreshing=true; setRefreshUI("busy", manual?"Pulling the latest forecast…":"");
+  try{
+    const {docs,fetchedAt}=await fetchForecasts();
+    lastFetchedAt=fetchedAt; ingest(docs,fetchedAt);
+    try{localStorage.setItem("goc.cache",JSON.stringify({docs,fetchedAt,obs:obsData}))}catch(e){}
+    setRefreshUI("idle", manual?"Forecast updated.":"");
+    fetchStations().then(o=>{ obsData=o; render(); try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); c.obs=o; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} }).catch(()=>{});
+  }catch(e){
+    console.warn(e); setRefreshUI("idle", Object.keys(forecasts).length? "Couldn't reach the forecast service; showing the last one." : "Couldn't reach the forecast service. Check your connection and tap Refresh.");
+    if(!Object.keys(forecasts).length) ingest([]);
+  }
+  refreshing=false; if(manual) setTimeout(()=>setRefreshUI("idle",""),4000);
+}
+(function boot(){
+  try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"null"); if(c&&c.docs){ obsData=c.obs||{}; ingest(c.docs,c.fetchedAt);} }catch(e){}
+  setRefreshUI("idle","");
+  document.getElementById("refreshBtn").onclick=()=>refreshAll(true);
+  refreshAll(false);
+  // re-fetch when the app comes back to the foreground after 30+ minutes
+  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && lastFetchedAt && Date.now()-Date.parse(lastFetchedAt)>30*60000) refreshAll(false); });
+})();
+</script>
+</body>
+</html>
