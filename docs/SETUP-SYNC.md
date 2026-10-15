@@ -1,4 +1,4 @@
-# Settings sync — one-time setup (no terminal needed)
+# Settings sync and push alerts — one-time setup
 
 Sync keeps the rider profile, comfort limits, per-spot overrides, checklist edits, alert settings and kept spots the same on every device. It runs on a free Cloudflare Worker with a small KV store; the page works exactly as before until you turn it on, and keeps working offline afterwards (the phone's copy is the cache).
 
@@ -25,6 +25,20 @@ From then on every change saves locally first and copies up about a second later
 
 ## Optional: deploy from GitHub instead of pasting
 `.github/workflows/sync-worker.yml` deploys `sync/worker.js` on every push to `main` that touches `sync/`, but only if the repo has two secrets: `CLOUDFLARE_API_TOKEN` (dashboard → profile → API Tokens → "Edit Cloudflare Workers" template) and `CLOUDFLARE_ACCOUNT_ID`. Put the KV namespace id in `sync/wrangler.toml`. Without the secrets the job skips itself.
+
+## Push alerts (after sync works)
+The hourly job on GitHub scores every spot for every rider who has turned notifications on and sends one digest per rider (SPEC §8; the rules live in `alerts/`). It needs three secrets and one Worker setting. All of this is a one-time setup; the rider only ever taps **Alerts → Enable notifications**.
+
+1. **Make a VAPID key pair** (identifies this app to Apple's and Google's push services). On any computer with Node installed run `npx web-push generate-vapid-keys`. It prints a public key and a private key; keep both somewhere safe. (This is the one step that needs a terminal.)
+2. **Worker variable:** Cloudflare dashboard → your Worker → **Settings → Variables and Secrets** → add `VAPID_PUBLIC_KEY` = the public key (type Text). Deploy.
+3. **Worker secret:** same place, add `ADMIN_TOKEN` = a long random string you make up (type Secret). This lets the hourly job read riders and write back the "already alerted" list; without it the job's routes answer 404.
+4. **GitHub secrets:** repo → **Settings → Secrets and variables → Actions** → add `SYNC_URL` (the Worker address from step 1.6), `SYNC_ADMIN_TOKEN` (same value as `ADMIN_TOKEN`) and `VAPID_PRIVATE_KEY` (the private key from step 1). Until these exist the alerts job skips itself with a note in the log.
+5. If you pasted the Worker code into the dashboard, paste the current `sync/worker.js` again; the push routes were added in Phase 3.
+6. On the phone: open the installed app (home-screen icon; iOS 16.4 or newer), tap **Alerts → Enable notifications**, allow. The sheet shows "On". Each linked device turns it on separately; the alert rules and the "already told you" list are shared through the sync key.
+
+Test it without waiting for wind: temporarily drag **Only if a spot scores at least** down on the Alerts sheet, then **Actions → Station observations → Run workflow** on GitHub. The `alerts` job's log shows the digest it sent (or why it held: quiet hours, delivery hour, daily cap). Put the threshold back afterwards.
+
+The job never sends more than the daily cap, holds tomorrow-and-beyond digests until the delivery hour, sends a same-day alert only in the morning, and stays silent in quiet hours. A spot-day it has told you about is not repeated unless its score moves by 2 or more or it drops below the threshold ("Saturday fell apart"). It also prunes devices whose subscription has expired.
 
 ## Baking the address into the page
 Once the Worker exists, set `const SYNC_URL="..."` in `index.html` so a device opened fresh only needs the link (the link also carries the address, so this is a convenience, not a requirement).

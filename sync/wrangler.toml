@@ -12,3 +12,10 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 [vars]
 # Page origins allowed to call the Worker. Add a custom domain here if the page moves.
 ALLOWED_ORIGINS = "https://mikestoneapps.github.io,http://localhost:8000,http://127.0.0.1:8000"
+# Push alerts (optional): the VAPID public key from `npx web-push generate-vapid-keys`. The private key
+# goes in the GitHub secret VAPID_PRIVATE_KEY, never here. Leave empty to keep push off.
+VAPID_PUBLIC_KEY = ""
+
+# Secret, not a var: ADMIN_TOKEN (a long random string) lets the hourly alerts job read riders and write
+# back alert state. Set it with `npx wrangler secret put ADMIN_TOKEN` or in the dashboard, and store the
+# same value as the GitHub secret SYNC_ADMIN_TOKEN. The admin routes answer 404 until it exists.

@@ -19,12 +19,14 @@ A kiteboarding spot-finder for one rider in Portland, OR (gift for his 50th). Th
 - `img/` — spot photos (480×320 JPEG, CC-licensed; credits in `img/credits.json`). Missing photo ⇒ neutral tile, by design.
 - `manifest.webmanifest`, `icon-*.png` — home-screen install.
 - `spots.json` — the 15 curated spots (schema in SPEC.md §4). `index.html` currently embeds a copy as `const SPOTS`; keep them in sync, or make the page load the JSON (preferred once there is a build step).
-- `scoring.js` — the scoring model as a standalone module, identical logic to the page. If you change scoring, change both or make the page import this.
+- `scoring.js` — the scoring model as a standalone module, identical logic to the page (including comfort limits and per-spot overrides). If you change scoring, change both; `node alerts/test.mjs` fails if they differ.
 - `stations.json` — nearest public wind stations per spot (NWS ids and NDBC buoy ids with distances).
 - `stations.py`, `obs_standalone.py` — fetch station observations (NWS via api.weather.gov; NDBC via realtime2 text feed). NDBC has no CORS, so buoys must be fetched server-side.
 - `fetch_forecast.py` — reference Open-Meteo fetch (3 models + marine).
 - `checklist-defaults.json` — default checklist items.
-- `sync/` — settings-sync Cloudflare Worker (`worker.js`, `wrangler.toml`, `test.mjs`). Optional; the page runs on localStorage alone until a Worker URL is entered in the Rider sheet. Setup in `docs/SETUP-SYNC.md`.
+- `sync/` — settings-sync + push Cloudflare Worker (`worker.js`, `wrangler.toml`, `test.mjs`). Optional; the page runs on localStorage alone until a Worker URL is entered in the Rider sheet. Also stores push subscriptions and the per-rider "already alerted" state. Setup in `docs/SETUP-SYNC.md`.
+- `alerts/` — hourly push-alert job (`run.mjs` sends, `lib.mjs` decides, `test.mjs` checks the rules and that the page's inline scoring still matches `scoring.js`). Runs in `.github/workflows/observations.yml`; skips itself until the secrets exist.
+- `sw.js` — service worker for push only: shows the notification and opens the app on the right day. No fetch handler, no cache (so it can never serve a stale page).
 - `docs/` — build plan and setup notes.
 
 ## Conventions

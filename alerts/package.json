@@ -1,0 +1,13 @@
+{
+  "name": "coastal-kiteboarding-alerts",
+  "private": true,
+  "description": "Hourly push-alert job: scores every spot for every synced rider with scoring.js and sends one digest per rider.",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs",
+    "dry-run": "node run.mjs --dry-run"
+  },
+  "dependencies": {
+    "web-push": "3.6.7"
+  }
+}
