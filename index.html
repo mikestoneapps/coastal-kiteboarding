@@ -102,6 +102,10 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:24px;text-align:center;color:var(--muted)}
 .beyond{margin-top:14px;color:var(--muted);font-size:14px}
 .beyond button{all:unset;color:var(--accent);cursor:pointer;font-weight:600}
+.away{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:14px;line-height:1.35}
+.away .lbl{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.away .actions{margin-top:8px}
+.row.pending .head{cursor:default;opacity:.8}.row.pending .wind{color:var(--muted)}
 .dock{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-top:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:8px;justify-content:center;z-index:5}
 .sheet{position:fixed;inset:0;background:rgba(10,16,20,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
 .sheet>div{background:var(--surface);color:var(--fg);width:100%;max-width:640px;max-height:85vh;overflow:auto;border-radius:14px 14px 0 0;padding-block:14px calc(20px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -209,7 +213,7 @@ const DEFAULT_COMFORT={minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3
 const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true};
 let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], updatedAt:null, v:2};
 try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[]}; }catch(e){}
-function allSpots(){ return settings.kept.length? SPOTS.concat(settings.kept) : SPOTS; }
+function allSpots(){ const extra=settings.kept.concat(awaySpots()); return extra.length? SPOTS.concat(extra) : SPOTS; }   // awaySpots() is [] unless away from home (Phase 4)
 function limitsFor(spotId){ return {...settings.comfort, ...(settings.overrides[spotId]||{})}; }
 const CAMS={pacificcity:{name:"Pacific City surf cam",url:"https://www.surf-forecast.com/breaks/Pacific-City_Gas-Chambers/webcams/latest",mi:0.6},
             roadsend:{name:"Lincoln City surf cam",url:"https://www.surf-forecast.com/breaks/Lincoln-City/webcams/latest",mi:2.1},
@@ -444,6 +448,7 @@ function computeAll(){
   return rows.sort(byScore);
 }
 function render(){
+  maybeDiscover();   // away from home: starts or resumes the OpenStreetMap search for this area; no-op at home
   document.getElementById("homeLO").setAttribute("aria-pressed",settings.home==="LO");
   document.getElementById("homeBC").setAttribute("aria-pressed",settings.home==="BC");
   document.getElementById("homeX").setAttribute("aria-pressed",settings.home==="X");
@@ -460,14 +465,17 @@ function render(){
   const top=[...within].sort((a,b)=> b.r.score-a.r.score || a.drive-b.drive)[0];
   if(!all.length){ hero.innerHTML=""; }
   else if(top && top.r.score>=4){
-    hero.innerHTML=`<div class="hero"><div class="hpic${top.spot.photo===false?" nophoto":""}">${top.spot.photo===false?GLYPH:`<img src="img/${top.spot.id}.jpg" alt="" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${Math.round(top.r.spd)}g${Math.round(top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
+    hero.innerHTML=`<div class="hero"><div class="hpic${top.spot.photo===false&&!top.spot.photoUrl?" nophoto":""}">${picHTML(top.spot)}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${Math.round(top.r.spd)}g${Math.round(top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
   } else {
     const far=beyond.find(x=>x.r.score>=4);
     hero.innerHTML=`<div class="hero"><div class="hbody"><div class="big" style="color:var(--gate)">${top?top.r.score.toFixed(1):"–"}</div><div><div class="lbl">${dayLabel(selDay)[0]} within ${mins(settings.radius)}</div><div class="name">Nothing worth the drive</div><div class="meta">${far? `Further out: ${esc(far.spot.name)} scores ${far.r.score.toFixed(1)} at ${mins(far.drive)}.` : "No spot in the forecast scores above 4 today."}</div></div></div></div>`;
   }
   const list=document.getElementById("list");
   const rows = (showBeyond? all: within);
-  list.innerHTML = rows.length? rows.map(row).join("") : `<div class="empty">No spots within ${mins(settings.radius)} of ${esc(homeInfo().name)}. Widen the drive slider.</div>`;
+  const pending = awaySpots().filter(s=>!forecasts[s.id] && (showBeyond || (driveMins(s)??999)<=settings.radius));   // discovered, not scored yet: names and tiles first
+  list.innerHTML = awayBanner() + (rows.length? rows.map(row).join("") : "") + pending.map(pendingRow).join("")
+    + (rows.length||pending.length||(awayMode()&&away.status!=="done")? "" : `<div class="empty">No spots within ${mins(settings.radius)} of ${esc(homeInfo().name)}. Widen the drive slider.</div>`);
+  bindAway();
   const b=document.getElementById("beyond");
   b.innerHTML = beyond.length && !showBeyond ? `${beyond.length} more spot${beyond.length>1?"s":""} beyond ${mins(settings.radius)} · <button id="showBeyond">show them</button>` : (showBeyond&&beyond.length? `<button id="showBeyond">hide spots beyond ${mins(settings.radius)}</button>`:"");
   const sb=document.getElementById("showBeyond"); if(sb) sb.onclick=()=>{showBeyond=!showBeyond; render();};
@@ -478,10 +486,10 @@ function row({spot,r,rt,drive}){
   const chips=[]; if(r.reason) chips.push(`<span class="chip ${c}">${esc(r.reason)}</span>`); if(r.agree&&selDay!==dayKeys[0]) chips.push(`<span class="chip">${r.agree}</span>`); if(r.dis) chips.push(`<span class="chip ok">${esc(r.dis.text)}</span>`);
   if(settings.sort==="tomorrow"&&rt) chips.push(`<span class="chip ${cls(rt.score)}">Tomorrow ${rt.score.toFixed(1)}</span>`);
   return `<div class="row" id="row-${spot.id}"><button class="head" aria-expanded="${openSpot===spot.id}" data-open="${spot.id}">
-    <div class="pic${spot.photo===false?" nophoto":""}">${spot.photo===false?GLYPH:`<img src="img/${spot.id}.jpg" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
-    <div style="min-width:0"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}</span></div>
+    <div class="pic${spot.photo===false&&!spot.photoUrl?" nophoto":""}">${picHTML(spot)}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
+    <div style="min-width:0"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}${spot.auto?" · auto":""}</span></div>
       <div class="wind">${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)} · ${hhmm(r.from)}–${hhmm(r.to)}${r.wh!=null?` · ${r.wh.toFixed(0)}ft`:""} ${chips.join(" ")}</div></div>
-    <div class="drive">${mins(drive)}<small>${drive>settings.radius?"beyond":(settings.home==="X"||spot.kept?"est.":"drive")}</small></div></button>
+    <div class="drive">${mins(drive)}<small>${drive>settings.radius?"beyond":(settings.home==="X"||spot.kept||spot.auto?"est.":"drive")}</small></div></button>
     <div id="detail-${spot.id}"${openSpot===spot.id?"":" hidden"}>${openSpot===spot.id?detail({spot,r,drive}):""}</div></div>`;
 }
 function detail({spot,r,f}){
@@ -504,7 +512,7 @@ function detail({spot,r,f}){
   const st=latestStation(spot.id);
   const kv=[];
   if(st){ const stale=st.age_min>OBS_MAX_AGE; kv.push([stale?`Wind measured · ${agoText(st.age_min)}`:`Wind measured now`,`${plain(st.spd,st.gst,st.dir)} <small>${esc(st.name)}, ${st.dist_mi} mi away, ${agoText(st.age_min)}${st.gst==null?" · no gust data":""}${stale?" · too old to score":""}</small>`, stale?"stale":""]); }
-  else kv.push(["Wind measured now",`<small>${(obsData[spot.id]||[]).length||NWS_STATIONS[spot.id]&&NWS_STATIONS[spot.id].length? "No recent reading from the nearest stations" : "No public wind station within 25 mi of this spot"}</small>`]);
+  else kv.push(["Wind measured now",`<small>${(obsData[spot.id]||[]).length||NWS_STATIONS[spot.id]&&NWS_STATIONS[spot.id].length? "No recent reading from the nearest stations" : spot.auto||spot.kept? "Stations aren't looked up for added spots yet" : "No public wind station within 25 mi of this spot"}</small>`]);
   const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
   const ni=forecasts[spot.id].time.findIndex(t=>t.slice(0,13)===nowLA); const raw=forecasts[spot.id];
   const at=(k)=> ni>=0&&ni+k<raw.time.length? [raw.spd[ni+k],raw.gst[ni+k],raw.dir[ni+k],hhmm(+raw.time[ni+k].slice(11,13))] : null;
@@ -520,13 +528,14 @@ function detail({spot,r,f}){
   const L=limitsFor(spot.id), ov=settings.overrides[spot.id]||{};
   const hold= r.detail? `<p class="hold"><b>What's holding it back:</b> ${esc(r.detail)}${r.mine?` · <button class="link" data-limits="${spot.id}">adjust your limits</button>`:""}</p>` : (r.score>=7? `<p class="hold"><b>Nothing holding it back.</b> ${r.window}-hour window at ${Math.round(r.spd)} kn.</p>`:"");
   const dis= r.dis? `<p class="hold warn"><b>Station disagrees:</b> ${esc(r.dis.o.name)} (${r.dis.o.dist_mi} mi) reads ${Math.round(r.dis.o.spd)} kn ${compass(r.dis.o.dir)} while the model says ${Math.round(r.dis.fc)} kn for this hour. Today's score uses the station.</p>`:"";
-  const cam=CAMS[spot.id]; 
+  const cam=CAMS[spot.id]||spot.cam; 
   const plan=`Heading to ${spot.name} ${dayLabel(selDay)[0]} ${hhmm(r.from)}–${hhmm(r.to)}, ${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)}. Directions: ${mapsUrl(spot)}`;
   return `${svg}<div class="kv">${kv.map(([k,v,c])=>`<div${c?` class="${c}"`:""}><b>${k}</b><span>${v}</span></div>`).join("")}</div>${hold}${dis}
-    ${spot.notes?`<p>${esc(spot.notes)}</p>`:""}<p><b>Parking:</b> ${esc(spot.parking||(spot.kept?"not noted":""))}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
+    ${spot.notes?`<p>${esc(spot.notes)}</p>`:""}<p><b>Parking:</b> ${esc(spot.parking||(spot.kept||spot.auto?"not noted":""))}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
     ${Object.keys(ov).length? `<p class="hold"><b>Your limits here:</b> ${Object.entries(ov).map(([k,v])=>`${k} ${v}`).join(", ")} · <button class="link" data-limits="${spot.id}">edit</button></p>`:""}
-    <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}${spot.kept?`<button class="btn" data-unkeep="${spot.id}">Remove this spot</button>`:""}</div>
-    ${spot.kept?`<p class="hold" style="margin-top:8px"><b>Kept spot</b> · faces ${compass(spot.facing)} · direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse) · drive times are road-distance estimates. Saved ${new Date(spot.addedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}${syncState.key?", synced":""}.</p>`:""}`;
+    <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}${spot.kept?`<button class="btn" data-unkeep="${spot.id}">Remove this spot</button>`:""}${spot.auto?`<button class="btn" data-keep="${spot.id}">Keep this spot</button>`:""}</div>
+    ${spot.auto?`<p class="hold" style="margin-top:8px"><b>Auto</b> · found on OpenStreetMap (${esc((spot.kind||"spot").toLowerCase())}${spot.osm?`, <a href="https://www.openstreetmap.org/${{n:"node",w:"way",r:"relation"}[spot.osm[0]]}/${spot.osm.slice(1)}" target="_blank" rel="noopener">map</a>`:""}) · ${spot.facing!=null?`faces ${compass(spot.facing)}, read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"}; direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"shoreline direction unknown, so wind direction isn't scored here; Keep it and pick which way it faces"} · drive time is a road-distance estimate${spot.waves?"":" · inland water, no surf forecast"}.${spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}
+    ${spot.kept?`<p class="hold" style="margin-top:8px"><b>Kept spot</b> · ${spot.facing!=null?`faces ${compass(spot.facing)}${spot.facingSrc?` (read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"})`:""} · direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"facing unknown, so wind direction isn't scored here"} · drive times are road-distance estimates${spot.osm?" · from OpenStreetMap":""}. Saved ${new Date(spot.addedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}${syncState.key?", synced":""}.${spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}`;
 }
 
 /* ---------- sheets ---------- */
@@ -548,7 +557,7 @@ function checklist(spotId, editing){
   const auto=[];
   if(x&&x.spot.pass) auto.push(["Oregon State Parks pass","Day-use lot at "+x.spot.name]);
   if(x&&x.spot.region==="Gorge") auto.push(["Day-use fee for the launch",""]);
-  if(x&&x.spot.region!=="Gorge") auto.push(["Gas before the coast range","101 towns close early"]);
+  if(x&&x.spot.region!=="Gorge"&&!x.spot.auto) auto.push(["Gas before the coast range","101 towns close early"]);
   if(auto.length) secs.push(["auto","For "+(x?x.spot.name:"this spot"),auto]);
   const sec=(k,t,items)=>`<h3>${esc(t)}</h3>`+items.map(([l,w],i)=>{const id=k+"-"+l.replace(/\W+/g,"_"); return editing&&k!=="auto"
     ? `<li><button class="rm" data-rm="${k}" data-i="${i}" aria-label="Remove ${esc(l)}">×</button><label>${esc(l)}</label></li>`
@@ -566,23 +575,31 @@ function checklist(spotId, editing){
 }
 function placeSheet(){
   const c=settings.custom;
-  sheet("Where are you?", `<p style="font-size:14px;color:var(--muted);margin:0 0 8px">Pick a town, or paste coordinates from Google Maps (long-press a point, tap the numbers to copy). Drive times from here are estimates by road distance.</p>
+  sheet("Where are you?", `<p style="font-size:14px;color:var(--muted);margin:0 0 8px">Type a place, pick a town, or paste coordinates from Google Maps (long-press a point, tap the numbers to copy). Drive times from here are estimates by road distance. More than ${AWAY_MI} miles from both houses, the app looks up kite spots around you from OpenStreetMap.</p>
+    <div class="field"><label for="plq">Place name</label><div style="display:flex;gap:6px;max-width:420px"><input type="search" id="plq" placeholder="San Diego · Hatteras NC · Maui" style="flex:1;min-width:0;font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg)"><button class="btn" id="plFind">Find</button></div><div class="kites" id="plHits" style="margin-top:6px"></div><p id="plNote" style="color:var(--muted);font-size:13px;margin:4px 0 0"></p></div>
     <div class="kites" id="places">${PLACES.map(([n,la,lo])=>`<button data-p="${n}" data-la="${la}" data-lo="${lo}" aria-pressed="${c.name===n}">${esc(n)}</button>`).join("")}</div>
     <div class="field"><label for="plname">Name</label><input type="text" id="plname" value="${esc(c.name||"")}" style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
     <div class="field"><label for="plll">Coordinates (lat, lon)</label><input type="text" id="plll" value="${c.lat!=null?c.lat+", "+c.lon:""}" placeholder="45.52, -122.67" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
     <div class="actions"><button class="btn primary" id="plSave">Use this location</button><button class="btn" id="plGPS">Use my current location</button></div>`);
+  const find=async()=>{ const q=document.getElementById("plq").value.trim(); if(!q) return; const note=document.getElementById("plNote"), hits=document.getElementById("plHits"); note.textContent="Looking up "+q+"…"; hits.innerHTML="";
+    try{ const ps=await geocode(q); if(!document.getElementById("plHits")) return; note.textContent= ps.length? "Tap one:" : "Nothing found for that. Try a town name, or paste coordinates below.";
+      hits.innerHTML=ps.map((p,i)=>`<button data-i="${i}" title="${esc(p.full)}">${esc(p.name)}</button>`).join("");
+      hits.querySelectorAll("button").forEach(b=>b.onclick=()=>{ const p=ps[+b.dataset.i]; settings.custom={name:p.name.split(",")[0].trim()||q,lat:p.lat,lon:p.lon}; settings.home="X"; saveSettings(); closeSheet(); render(); });
+    }catch(e){ if(document.getElementById("plNote")) note.textContent="Couldn't reach the place lookup. Paste coordinates below instead."; } };
+  document.getElementById("plFind").onclick=find; document.getElementById("plq").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); find(); } };
   document.getElementById("plGPS").onclick=()=>{ const b=document.getElementById("plGPS"); if(!navigator.geolocation){ b.textContent="Location not available"; return; } b.textContent="Locating…";
     navigator.geolocation.getCurrentPosition(p=>{ settings.custom={name:"Current location",lat:+p.coords.latitude.toFixed(4),lon:+p.coords.longitude.toFixed(4)}; settings.home="X"; saveSettings(); closeSheet(); render(); }, ()=>{ b.textContent="Couldn't get location — allow it in Settings, or paste coordinates"; }, {enableHighAccuracy:false,timeout:12000,maximumAge:300000}); };
   host.querySelectorAll("#places button").forEach(b=>b.onclick=()=>{ document.getElementById("plname").value=b.dataset.p; document.getElementById("plll").value=b.dataset.la+", "+b.dataset.lo; host.querySelectorAll("#places button").forEach(o=>o.setAttribute("aria-pressed",o===b)); });
   document.getElementById("plSave").onclick=()=>{ const m=document.getElementById("plll").value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); if(!m){ document.getElementById("plll").focus(); return; }
     settings.custom={name:document.getElementById("plname").value.trim()||"Custom spot",lat:+m[1],lon:+m[2]}; settings.home="X"; saveSettings(); closeSheet(); render(); };
 }
-function keepSheet(){
+function keepSheet(pre){
+  pre=pre||{};   // prefilled from a discovered spot whose facing couldn't be read off the shoreline
   sheet("Keep a spot", `<p style="font-size:13px;color:var(--muted);margin:0 0 6px">A beach you ride that isn't in the list. Name, coordinates and which way the beach faces are all it needs; it gets a forecast and a score like the others, and it stays in your list${syncState.key?" on every linked device":""}.</p>
-    <div class="field"><label for="ksname">Spot name</label><input type="text" id="ksname" placeholder="Mission Bay" style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
-    <div class="field"><label for="ksll">Coordinates (lat, lon)</label><input type="text" id="ksll" placeholder="32.77, -117.25" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
+    <div class="field"><label for="ksname">Spot name</label><input type="text" id="ksname" placeholder="Mission Bay" value="${esc(pre.name||"")}" style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
+    <div class="field"><label for="ksll">Coordinates (lat, lon)</label><input type="text" id="ksll" placeholder="32.77, -117.25" value="${pre.lat!=null?pre.lat+", "+pre.lon:""}" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
     <div class="field"><label>Beach faces (toward the water)</label><div class="kites" id="ksface">${["N","NE","E","SE","S","SW","W","NW"].map((c,i)=>`<button data-deg="${i*45}" aria-pressed="${c==="W"}">${c}</button>`).join("")}</div></div>
-    <ul class="check" style="margin:0"><li><input type="checkbox" id="kswaves" checked><label for="kswaves">Ocean beach <small>(pull the surf forecast)</small></label></li></ul>
+    <ul class="check" style="margin:0"><li><input type="checkbox" id="kswaves" ${pre.waves===false?"":"checked"}><label for="kswaves">Ocean beach <small>(pull the surf forecast)</small></label></li></ul>
     <div class="actions" style="margin-top:8px"><button class="btn primary" id="ksKeep">Keep this spot</button><button class="btn" id="ksGPS">Use my current location</button></div>
     ${settings.kept.length?`<div class="kites" style="margin-top:10px">${settings.kept.map(k=>`<button data-unkeep="${k.id}" title="Remove">${esc(k.name)} ×</button>`).join("")}</div>`:""}`);
   host.querySelectorAll("#ksface button").forEach(b=>b.onclick=()=>host.querySelectorAll("#ksface button").forEach(o=>o.setAttribute("aria-pressed",o===b)));
@@ -591,7 +608,8 @@ function keepSheet(){
   document.getElementById("ksKeep").onclick=()=>{ const name=document.getElementById("ksname").value.trim(); const m=document.getElementById("ksll").value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
     if(!name){ document.getElementById("ksname").focus(); return; } if(!m||Math.abs(+m[1])>90||Math.abs(+m[2])>180){ document.getElementById("ksll").focus(); return; }   // a bad coordinate would fail the batched forecast call for every spot
     const fb=host.querySelector('#ksface button[aria-pressed="true"]'); const facing=fb?+fb.dataset.deg:270;
-    keepSpot({name,lat:+m[1],lon:+m[2],facing,waves:document.getElementById("kswaves").checked}); closeSheet(); render(); };
+    if(pre.carry&&pre.carry.forecastFrom) dropDiscovered(pre.carry.forecastFrom);
+    keepSpot({name,lat:+m[1],lon:+m[2],facing,waves:document.getElementById("kswaves").checked,...(pre.carry||{})}); closeSheet(); render(); };
   host.querySelectorAll("#sheet [data-unkeep]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); unkeepSpot(b.dataset.unkeep); keepSheet(); });
 }
 const COMFORT_DEF=[["minWind","Minimum wind I'll go out for","kn",6,20,1],["maxWind","Maximum sustained wind","kn",18,40,1],["maxGust","Maximum gust","kn",18,45,1],["maxSurf","Maximum surf","ft",1,15,1],["minHours","Minimum session length","h",1,6,1]];
@@ -781,6 +799,7 @@ document.getElementById("days").onclick=e=>{const b=e.target.closest("[data-day]
 document.getElementById("list").onclick=e=>{ const c=e.target.closest("[data-check]"); if(c){checklist(c.dataset.check);return;}
   const lm=e.target.closest("[data-limits]"); if(lm){limitsSheet(lm.dataset.limits);return;}
   const uk=e.target.closest("[data-unkeep]"); if(uk){ unkeepSpot(uk.dataset.unkeep); return; }
+  const kp=e.target.closest("[data-keep]"); if(kp){ keepDiscovered(kp.dataset.keep); return; }
   const sh=e.target.closest("[data-share]"); if(sh){ const txt=sh.dataset.share; const done=()=>{sh.textContent="Copied — paste to a buddy"; setTimeout(()=>sh.textContent="Share plan",2500);};
     try{ navigator.clipboard.writeText(txt).then(done).catch(()=>{ const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy")}catch(_){} ta.remove(); done(); }); }catch(_){ done(); }
     return; } const b=e.target.closest("[data-open]"); if(!b) return; openSpot=openSpot===b.dataset.open?null:b.dataset.open; render(); if(openSpot){const el=document.getElementById("row-"+openSpot); el&&el.scrollIntoView({block:"nearest",behavior:"smooth"});} };
@@ -796,19 +815,255 @@ function sectorsFromFacing(f){
   const n=d=>((d%360)+360)%360;
   return {best:[[n(f-30),n(f+30)]], work:[[n(f-80),n(f+80)]], off:[[n(f+130),n(f+230)]]};
 }
-function keepSpot({name,lat,lon,facing,waves}){
+function keepSpot({name,lat,lon,facing,waves,osm,kind,notes,photoUrl,photoCredit,cam,facingSrc,forecastFrom}){
+  // facing may be null (a discovered spot with no shoreline nearby): then every direction "works" and nothing gates, and the detail says so.
   const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,24)||"spot";
   let id="k-"+slug; while(allSpots().some(s=>s.id===id)) id="k-"+slug+"-"+Math.random().toString(36).slice(2,5);
   const est=h=>Math.round(haversineMi(h.lat,h.lon,lat,lon)*1.35/47*60/5)*5;
-  const spot={id,name,region:"Kept",lat,lon,plat:lat,plon:lon,facing,dir:sectorsFromFacing(facing),waves:!!waves,pass:false,photo:false,notes:"",parking:"",driveLO:est(HOMES.LO),driveBC:est(HOMES.BC),kept:true,addedAt:new Date().toISOString()};
+  const spot={id,name,region:"Kept",lat,lon,plat:lat,plon:lon,facing:facing==null?null:facing,dir:facing==null?UNKNOWN_DIR:sectorsFromFacing(facing),waves:!!waves,pass:false,photo:false,notes:notes||"",parking:"",driveLO:est(HOMES.LO),driveBC:est(HOMES.BC),kept:true,addedAt:new Date().toISOString()};
+  if(osm) spot.osm=osm; if(kind) spot.kind=kind; if(facingSrc) spot.facingSrc=facingSrc; if(photoUrl){ spot.photoUrl=photoUrl; spot.photoCredit=photoCredit||""; } if(cam) spot.cam=cam;
   settings.kept.push(spot); saveSettings();
-  refreshAll(false);   // pulls a forecast for the new spot; the list re-sorts once when it lands
+  if(forecastFrom&&forecasts[forecastFrom]){ forecasts[id]={...forecasts[forecastFrom],spotId:id}; cacheMerge({docs:Object.values(forecasts)}); }   // a discovered spot already has its forecast
+  else refreshAll(false);   // pulls a forecast for the new spot; the list re-sorts once when it lands
   return spot;
 }
 function unkeepSpot(id){
   settings.kept=settings.kept.filter(s=>s.id!==id); delete settings.overrides[id]; delete forecasts[id];
   if(openSpot===id) openSpot=null; saveSettings(); render();
 }
+
+/* ---------- away from home (SPEC §5) ---------- */
+// More than AWAY_MI from both houses, the curated list is useless, so the page looks up kite spots around the
+// rider from OpenStreetMap (Overpass): sport=kitesurfing/kiteboarding/windsurfing tags plus named beaches.
+// They get a forecast from one batched Open-Meteo call like every other spot, direction rules inferred from the
+// shoreline, and are marked "auto". Photos and webcams enrich in the background; scores never wait for them.
+// Pure functions first (away/test.mjs runs them under Node with mock data), then the page glue.
+const AWAY_MI=150;                 // further than this from both houses = away mode
+const AWAY_MAX_SPOTS=40;           // most spots scored per area (one batched Open-Meteo call)
+const AWAY_CACHE_DAYS=7;           // last-seen results per area, so reopening is instant
+const SHORE_MI=1.6;                // a shoreline further than this from the spot doesn't tell us which way it faces
+const CAM_MI=8;                    // nearest public webcam within this
+const OVERPASS=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+const UNKNOWN_DIR={best:[],work:[[0,360]],off:[]};   // facing unknown: every direction "works", nothing gates (marked in the detail)
+var away={key:null, status:"idle", spots:[], at:null, radiusMi:0, note:""};   // status: idle | searching | scoring | done | empty | error
+function milesFromHomes(lat,lon){ return Math.min(...Object.values(HOMES).map(h=>haversineMi(h.lat,h.lon,lat,lon))); }
+function awayMode(){ const c=settings.custom||{}; return settings.home==="X" && c.lat!=null && c.lon!=null && milesFromHomes(c.lat,c.lon)>AWAY_MI; }
+function awaySpots(){ return away && awayMode()? away.spots: []; }
+function searchMiles(){ return Math.min(120, Math.max(30, Math.round(settings.radius/60*47/1.35))); }   // drive minutes -> road miles -> straight-line miles
+function awayKey(){ const c=settings.custom; return (+c.lat).toFixed(2)+","+(+c.lon).toFixed(2); }
+function overpassQuery(lat,lon,mi){
+  const r=Math.round(mi*1609);
+  return `[out:json][timeout:25];(nwr(around:${r},${lat},${lon})["sport"~"kitesurf|kiteboard|windsurf"];nwr(around:${r},${lat},${lon})["natural"="beach"]["name"];);out center tags 600;`;
+}
+function facingQuery(spots){
+  // Shoreline within 2.5 km of each spot: natural=coastline for the sea, natural=water closed ways for lakes and rivers.
+  const a=spots.map(s=>`(around:2500,${s.lat},${s.lon})`);
+  return `[out:json][timeout:25];(${a.map(x=>`way${x}["natural"="coastline"];`).join("")}${a.map(x=>`way${x}["natural"="water"];`).join("")});out geom 300;`;
+}
+function camQuery(spots){
+  const a=spots.map(s=>`node(around:${Math.round(CAM_MI*1609)},${s.lat},${s.lon})["man_made"="surveillance"]["surveillance:type"="webcam"];`).join("");
+  return `[out:json][timeout:25];(${a});out body 200;`;
+}
+function osmNotes(t){
+  const bits=[];
+  if(t.sport) bits.push(t.sport.split(";").map(s=>s.trim()).join(", "));
+  if(t.surface) bits.push(t.surface+" "+(t.natural==="beach"?"beach":"surface"));
+  if(t.description) bits.push(t.description);
+  if(t.access&&t.access!=="yes"&&t.access!=="public") bits.push("access: "+t.access);
+  if(t.fee==="yes") bits.push("fee");
+  return bits.length? "OpenStreetMap: "+bits.join(" · ") : "";
+}
+function parseOverpass(json, lat, lon){
+  // Elements -> candidate spots: named, not private, de-duplicated within 0.75 mi (a tagged launch beats the beach it sits on),
+  // every sport-tagged spot first, then the nearest named beaches up to AWAY_MAX_SPOTS.
+  const els=(json&&json.elements)||[], items=[];
+  for(const e of els){
+    const t=e.tags||{}; const la=e.lat??(e.center&&e.center.lat), lo=e.lon??(e.center&&e.center.lon); if(la==null||lo==null) continue;
+    if(t.access==="private"||t.access==="no") continue;
+    const sport=/kitesurf|kiteboard|windsurf/i.test(t.sport||""), kite=/kitesurf|kiteboard/i.test(t.sport||"");
+    const name=t.name||t["name:en"]||(sport? (kite?"Kite launch":"Windsurf launch"):null); if(!name) continue;
+    items.push({osm:e.type[0]+e.id, name, lat:+(+la).toFixed(4), lon:+(+lo).toFixed(4), kind: kite?"Kite spot": sport?"Windsurf spot":"Beach", sport, notes:osmNotes(t), mi:+haversineMi(lat,lon,la,lo).toFixed(1)});
+  }
+  items.sort((a,b)=> (b.sport-a.sport) || a.mi-b.mi);
+  const out=[];
+  for(const it of items){ if(out.some(o=>haversineMi(o.lat,o.lon,it.lat,it.lon)<0.75)) continue; out.push(it); }
+  const sp=out.filter(x=>x.sport).slice(0,AWAY_MAX_SPOTS), bch=out.filter(x=>!x.sport).slice(0,AWAY_MAX_SPOTS-sp.length);
+  return sp.concat(bch).sort((a,b)=>a.mi-b.mi);
+}
+function toAwaySpot(it){
+  const est=h=>Math.round(haversineMi(h.lat,h.lon,it.lat,it.lon)*1.35/47*60/5)*5;
+  return {id:"a-"+it.osm, name:it.name, region:it.kind, lat:it.lat, lon:it.lon, plat:it.lat, plon:it.lon, waves:true, pass:false, photo:false, notes:it.notes||"", parking:"",
+    driveLO:est(HOMES.LO), driveBC:est(HOMES.BC), auto:true, osm:it.osm, kind:it.kind, facing:null, facingSrc:null, dir:UNKNOWN_DIR, mi:it.mi};
+}
+function nearestSeg(lat,lon,geom){
+  // Nearest segment of a way to a point, on a local flat plane (x east, y north, in degrees of latitude). Returns {d, A, B, px, py}.
+  const kx=Math.cos(lat*Math.PI/180); let best=null;
+  for(let i=0;i+1<geom.length;i++){
+    const A=geom[i], B=geom[i+1]; if(!A||!B) continue;
+    const ax=(A.lon-lon)*kx, ay=A.lat-lat, bx=(B.lon-lon)*kx, by=B.lat-lat, dx=bx-ax, dy=by-ay, L=dx*dx+dy*dy;
+    let t= L? -(ax*dx+ay*dy)/L : 0; t=Math.max(0,Math.min(1,t));
+    const px=ax+t*dx, py=ay+t*dy, d=Math.hypot(px,py);
+    if(!best||d<best.d) best={d,A,B,px,py,dx,dy};
+  }
+  return best;
+}
+function facingFor(spot, ways){
+  // Which way the beach faces (compass bearing toward the water), from the nearest shoreline within SHORE_MI.
+  // OSM coastline ways run with land on the left and water on the right, so the water is on the segment's right-hand side.
+  // natural=water ways (lakes, rivers) have no fixed direction: the water is on whichever side the polygon's centre lies.
+  let best=null;
+  for(const w of ways){
+    const g=w.geometry; if(!g||g.length<2) continue;
+    const seg=nearestSeg(spot.lat,spot.lon,g); if(!seg) continue;
+    const dMi=seg.d*69.1; if(dMi>SHORE_MI) continue;
+    const coast=w.tags&&w.tags.natural==="coastline";
+    const segBearing=(Math.atan2(seg.dx,seg.dy)*180/Math.PI+360)%360;
+    let f=(segBearing+90)%360;
+    if(!coast){
+      const kx=Math.cos(spot.lat*Math.PI/180); let cx=0,cy=0; g.forEach(p=>{cx+=(p.lon-spot.lon)*kx; cy+=p.lat-spot.lat;}); cx/=g.length; cy/=g.length;
+      const cross=seg.dx*(cy-seg.py)-seg.dy*(cx-seg.px);   // >0: centre is to the left of the segment
+      if(cross>0) f=(f+180)%360;
+    }
+    const rank=dMi+(coast?0:0.3);   // the sea coast wins over a pond at the same distance
+    if(!best||rank<best.rank) best={facing:Math.round(f)%360, source:coast?"coastline":"water", mi:+dMi.toFixed(2), rank};
+  }
+  return best;
+}
+function applyFacing(spots, json){
+  const ways=((json&&json.elements)||[]).filter(w=>w.type==="way"&&w.geometry);
+  let n=0;
+  for(const s of spots){ const f=facingFor(s,ways); if(f){ s.facing=f.facing; s.facingSrc=f.source; s.dir=sectorsFromFacing(f.facing); s.waves=f.source==="coastline"; n++; } }
+  return n;
+}
+function applyCams(spots, json){
+  // Public webcams OSM knows about (man_made=surveillance + surveillance:type=webcam with a link): nearest within CAM_MI per spot.
+  const cams=((json&&json.elements)||[]).map(e=>{ const t=e.tags||{}; const url=t["contact:webcam"]||t.website||t.url||t["contact:website"]; return url&&e.lat!=null? {name:t.name||t.description||"Webcam",url,lat:e.lat,lon:e.lon}:null; }).filter(Boolean);
+  let n=0;
+  for(const s of spots){ let b=null; for(const c of cams){ const mi=haversineMi(s.lat,s.lon,c.lat,c.lon); if(mi<=CAM_MI&&(!b||mi<b.mi)) b={name:c.name,url:c.url,mi:+mi.toFixed(1)}; } if(b){ s.cam=b; n++; } }
+  return n;
+}
+function pickCommonsPhoto(json){
+  // First landscape, CC/public-domain JPEG or PNG from a Commons geosearch result.
+  const pages=Object.values((json&&json.query&&json.query.pages)||{}).sort((a,b)=>(a.index||0)-(b.index||0));
+  for(const p of pages){
+    const ii=p.imageinfo&&p.imageinfo[0]; if(!ii||!ii.thumburl||!(ii.width>ii.height)) continue;
+    if(!/\.(jpe?g|png|webp)$/i.test(p.title||"")) continue;
+    const m=ii.extmetadata||{}; const lic=(m.LicenseShortName&&m.LicenseShortName.value)||""; if(!/^(CC|Public domain|PD)/i.test(lic)) continue;
+    const artist=((m.Artist&&m.Artist.value)||"").replace(/<[^>]+>/g,"").trim();
+    return {url:ii.thumburl, credit:`${String(p.title).replace(/^File:/,"")}: ${artist||"unknown"} (${lic})`, page:ii.descriptionurl||""};
+  }
+  return null;
+}
+/* page glue: network, state, rendering */
+async function overpass(query){
+  let err;
+  for(const u of OVERPASS){
+    const c=new AbortController(); const t=setTimeout(()=>c.abort(),30000);
+    try{ const r=await fetch(u,{method:"POST",body:"data="+encodeURIComponent(query),signal:c.signal,headers:{"Content-Type":"application/x-www-form-urlencoded"}}); if(!r.ok) throw new Error("OpenStreetMap said "+r.status); return await r.json(); }
+    catch(e){ err=e; } finally{ clearTimeout(t); }
+  }
+  throw err||new Error("OpenStreetMap unreachable");
+}
+async function commonsPhoto(lat,lon){
+  const u=`https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=1000&ggsnamespace=6&ggslimit=8&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=640&iiextmetadatafilter=Artist|LicenseShortName`;
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),15000);
+  try{ const r=await fetch(u,{signal:c.signal,headers:{"Api-User-Agent":"CoastalKiteboarding/1.0 (https://mikestoneapps.github.io/coastal-kiteboarding/)"}}); if(!r.ok) throw new Error(r.status); return pickCommonsPhoto(await r.json()); } finally{ clearTimeout(t); }
+}
+async function geocode(q){
+  // Nominatim (OpenStreetMap): a town or a beach by name -> up to 5 places. Free; the browser's Referer identifies the app.
+  const j=await fetchJSON(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(q)}`,15000);
+  return (Array.isArray(j)?j:[]).map(p=>({name:String(p.display_name||"").split(",").slice(0,2).map(s=>s.trim()).join(", "), full:p.display_name, lat:+(+p.lat).toFixed(4), lon:+(+p.lon).toFixed(4)})).filter(p=>!isNaN(p.lat)&&!isNaN(p.lon));
+}
+function cacheMerge(patch){ try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); Object.assign(c,patch); localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} }
+function awayCacheGet(key){ try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); const a=c.away&&c.away[key]; if(a&&a.at&&Date.now()-Date.parse(a.at)<AWAY_CACHE_DAYS*864e5) return a; }catch(e){} return null; }
+function awayCacheSet(){ if(!away.key) return; try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); c.away=c.away||{}; c.away[away.key]={at:away.at,radiusMi:away.radiusMi,status:away.status,spots:away.spots}; const ks=Object.keys(c.away); while(ks.length>6) delete c.away[ks.shift()]; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} }
+function mergeForecasts(docs){ (docs||[]).forEach(d=>{ if(d&&d.spotId) forecasts[d.spotId]=d; }); cacheMerge({docs:Object.values(forecasts)}); }
+let awayTimer=null;
+function maybeDiscover(){
+  // Called at the top of render(): starts a search for a new area, re-searches when the drive radius outgrows the last one.
+  if(!awayMode()) return;
+  const key=awayKey(), mi=searchMiles();
+  if(away.key===key){ if(away.status==="searching"||away.status==="scoring"||away.status==="idle") return; if(away.radiusMi>=mi) return; }
+  else { const c=awayCacheGet(key); if(c&&c.radiusMi>=mi){ away={key,status:c.status==="empty"?"empty":"done",spots:c.spots||[],at:c.at,radiusMi:c.radiusMi,note:"cached"}; ensureAwayForecasts(); return; } away={key,status:"idle",spots:[],at:null,radiusMi:0,note:""}; }
+  clearTimeout(awayTimer); awayTimer=setTimeout(()=>discover(key,mi),250);
+}
+async function ensureAwayForecasts(){
+  const missing=away.spots.filter(s=>!forecasts[s.id]); if(!missing.length) return;
+  const key=away.key;
+  try{ const {docs}=await fetchForecasts(missing); if(away.key!==key) return; mergeForecasts(docs); render(); }
+  catch(e){ console.warn("away forecast",e); if(away.key===key){ away.note="noforecast"; render(); } }
+}
+async function discover(key, mi){
+  const c=settings.custom, lat=c.lat, lon=c.lon;
+  const keepOld= away.key===key? away.spots: [];   // a wider search for the same place keeps the rows up until the new ones land
+  away={key, status:"searching", spots:keepOld, at:new Date().toISOString(), radiusMi:mi, note:""};
+  render();
+  let found;
+  try{ found=parseOverpass(await overpass(overpassQuery(lat,lon,mi)), lat, lon); }
+  catch(e){ console.warn("overpass",e); if(away.key!==key||away.status!=="searching") return; away.status="error"; away.note=String(e&&e.message||e); render(); return; }
+  if(away.key!==key||away.status!=="searching") return;   // he moved on
+  if(!found.length){ away.spots=[]; away.status="empty"; awayCacheSet(); render(); return; }
+  const byOsm={}; keepOld.forEach(s=>byOsm[s.osm]=s);
+  away.spots=found.map(it=>byOsm[it.osm]? Object.assign(byOsm[it.osm],{mi:it.mi}) : toAwaySpot(it));
+  away.status="scoring"; render();   // names, distances and neutral tiles first
+  // Direction rules and forecasts in parallel; the list re-sorts once when both are in (the shoreline lookup gets 12 s, then it can land late).
+  const facing=overpass(facingQuery(away.spots)).then(j=>{ if(away.key!==key) return; applyFacing(away.spots,j); if(away.status==="done"){ awayCacheSet(); render(); } }).catch(e=>console.warn("shoreline",e));
+  const fc=fetchForecasts(away.spots).then(({docs})=>{ if(away.key===key) mergeForecasts(docs); }).catch(e=>{ console.warn("away forecast",e); if(away.key===key) away.note="noforecast"; });
+  await Promise.allSettled([fc, Promise.race([facing, new Promise(r=>setTimeout(r,12000))])]);
+  if(away.key!==key||away.status!=="scoring") return;
+  away.status="done"; awayCacheSet(); render();
+  enrichAway(key);
+}
+async function enrichAway(key){
+  // Background only: webcams from OSM, then photos from Wikimedia Commons three at a time. Patches tiles in place, never re-sorts.
+  try{ const j=await overpass(camQuery(away.spots)); if(away.key!==key) return; if(applyCams(away.spots,j)){ awayCacheSet(); if(openSpot) render(); } }catch(e){}
+  const queue=away.spots.filter(s=>!s.photoUrl&&!s.photoChecked);
+  const worker=async()=>{ let s; while((s=queue.shift())){ if(away.key!==key) return; try{ const p=await commonsPhoto(s.lat,s.lon); s.photoChecked=new Date().toISOString(); if(p){ s.photoUrl=p.url; s.photoCredit=p.credit; patchPhoto(s); } }catch(e){} } };
+  await Promise.all([worker(),worker(),worker()]);
+  if(away.key===key) awayCacheSet();
+}
+function picHTML(spot){
+  if(spot.photoUrl) return `<img src="${esc(spot.photoUrl)}" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`;
+  if(spot.photo===false) return GLYPH;
+  return `<img src="img/${spot.id}.jpg" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`;
+}
+function patchPhoto(spot){
+  const pic=document.querySelector(`#row-${CSS.escape(spot.id)} .pic`); if(!pic) return;
+  const sc=pic.querySelector(".score"); pic.classList.remove("nophoto"); pic.innerHTML=picHTML(spot); if(sc) pic.appendChild(sc);
+}
+function pendingRow(spot){
+  const drive=driveMins(spot)??999;
+  return `<div class="row pending" id="row-${spot.id}"><button class="head" aria-expanded="false" disabled>
+    <div class="pic nophoto">${picHTML(spot)}<div class="score gate">…</div></div>
+    <div style="min-width:0"><div class="name">${esc(spot.name)}<span>${esc(spot.region)} · auto</span></div><div class="wind">${away.note==="noforecast"?"no forecast yet":"scoring…"}</div></div>
+    <div class="drive">${mins(drive)}<small>est.</small></div></button></div>`;
+}
+function awayBanner(){
+  if(!awayMode()) return "";
+  const here=esc((settings.custom.name||"here").split(" (")[0]), mi=away.radiusMi||searchMiles(), n=away.spots.length;
+  const again=`<button class="btn small" id="awayAgain">Search again</button>`, hand=`<button class="btn small" id="awayHand">Add a spot by hand</button>`;
+  let t;
+  if(away.status==="searching") t=`Looking for kite spots within ${mi} mi of ${here} on OpenStreetMap…`;
+  else if(away.status==="scoring") t=`${n} spot${n===1?"":"s"} near ${here}. Scoring…`;
+  else if(away.status==="empty") t=`<b>No spots found here yet.</b> OpenStreetMap has no kitesurfing or windsurfing launches and no named beaches within ${mi} mi of ${here}. Add one by hand: name, coordinates and which way the beach faces are all it needs.<div class="actions">${hand}${again}</div>`;
+  else if(away.status==="error") t=`<b>Couldn't reach OpenStreetMap</b> (${esc(away.note||"no answer")}), so there's no spot list for ${here} yet. Try again, or add a spot by hand.<div class="actions">${again}${hand}</div>`;
+  else if(away.status==="done") t=`${n} spot${n===1?"":"s"} within ${mi} mi of ${here}, from OpenStreetMap${away.note==="cached"?" (last search)":""}. Direction rules marked <b>auto</b> are inferred from the shoreline. Open a row and tap <b>Keep this spot</b> to save it${syncState.key?" to every linked device":""}.${away.note==="noforecast"?" <b>Couldn't get a forecast for them</b>; tap Refresh now.":""}<div class="actions">${again}${hand}</div>`;
+  else t=`More than ${AWAY_MI} miles from both houses.`;
+  return `<div class="away" id="away"><div class="lbl">Away from home</div><div>${t}</div></div>`;
+}
+function bindAway(){
+  const a=document.getElementById("awayAgain"); if(a) a.onclick=()=>{ if(!awayMode()) return; try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); if(c.away) delete c.away[awayKey()]; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} discover(awayKey(), searchMiles()); };
+  const h=document.getElementById("awayHand"); if(h) h.onclick=()=>keepSheet();
+}
+function keepDiscovered(id){
+  const s=away.spots.find(x=>x.id===id); if(!s) return;
+  const carry={osm:s.osm, kind:s.kind, notes:s.notes, photoUrl:s.photoUrl, photoCredit:s.photoCredit, cam:s.cam, facingSrc:s.facingSrc, forecastFrom:s.id};
+  if(s.facing==null){ keepSheet({name:s.name,lat:s.lat,lon:s.lon,waves:s.waves,carry}); return; }   // he picks which way it faces
+  dropDiscovered(id);
+  keepSpot({name:s.name,lat:s.lat,lon:s.lon,facing:s.facing,waves:s.waves,...carry});
+  openSpot=null; render();
+}
+function dropDiscovered(id){ away.spots=away.spots.filter(x=>x.id!==id); if(openSpot===id) openSpot=null; awayCacheSet(); }
 
 /* ---------- settings sync (Cloudflare Worker, see sync/ and docs/SETUP-SYNC.md) ---------- */
 // Optional. With no Worker URL the page behaves exactly as before: localStorage only.
@@ -916,9 +1171,9 @@ async function fetchJSON(url, ms=25000){
   try{ const r=await fetch(url,{signal:c.signal}); if(!r.ok) throw new Error(r.status); return await r.json(); } finally{ clearTimeout(t); }
 }
 const rnd=(xs,nd=1)=>xs.map(v=>v==null?null:+v.toFixed(nd));
-async function fetchForecasts(){
-  // One Open-Meteo call for all spots (multi-location), one marine call for the coast spots.
-  const all=allSpots();
+async function fetchForecasts(list){
+  // One Open-Meteo call for all spots (multi-location), one marine call for the coast spots. `list` limits it (discovered spots).
+  const all=list||allSpots();
   const lat=all.map(s=>s.lat).join(","), lon=all.map(s=>s.lon).join(",");
   const q=`latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code&models=best_match,gfs_seamless,icon_seamless&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
   const w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+q, 40000);
@@ -945,7 +1200,7 @@ async function fetchObsFile(){
 }
 function applyObs(o){
   obsData=mergeObs(obsData,o); render();
-  try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); c.obs=obsData; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){}
+  cacheMerge({obs:obsData});
 }
 async function fetchStations(){
   // NWS/METAR observations, nearest two per spot, fetched directly in parallel so the page still has readings if the hourly job is late.
@@ -962,7 +1217,7 @@ async function refreshAll(manual){
   try{
     const {docs,fetchedAt}=await fetchForecasts();
     lastFetchedAt=fetchedAt; ingest(docs,fetchedAt);
-    try{localStorage.setItem("goc.cache",JSON.stringify({docs,fetchedAt,obs:obsData}))}catch(e){}
+    cacheMerge({docs,fetchedAt,obs:obsData});
     setRefreshUI("idle", manual?"Forecast updated.":"");
     // Station readings never hold up the scores: both sources merge in as they arrive, fresher reading per station wins.
     fetchObsFile().then(applyObs).catch(e=>console.warn("obs.json unavailable",e));
