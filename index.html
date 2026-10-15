@@ -159,13 +159,14 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
     </div>
     <div class="radius">
       <label for="radius">Drive</label>
-      <input type="range" id="radius" min="30" max="240" step="15" value="90">
+      <input type="range" id="radius" min="30" max="360" step="15" value="90">
       <output id="radiusOut" for="radius">1h30</output>
     </div>
   </div>
 
   <div class="list" id="list"></div>
   <div class="beyond" id="beyond"></div>
+  <div class="beyond"><button id="openKeep">Keep a spot that isn't listed</button></div>
 </div>
 
 <div class="dock">
@@ -206,15 +207,17 @@ const GLYPH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 
 const DEFAULT_COMFORT={minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3, stretch:true};
 const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true};
-let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score"};
-try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}}; }catch(e){}
+let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], updatedAt:null, v:2};
+try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[]}; }catch(e){}
+function allSpots(){ return settings.kept.length? SPOTS.concat(settings.kept) : SPOTS; }
 function limitsFor(spotId){ return {...settings.comfort, ...(settings.overrides[spotId]||{})}; }
 const CAMS={pacificcity:{name:"Pacific City surf cam",url:"https://www.surf-forecast.com/breaks/Pacific-City_Gas-Chambers/webcams/latest",mi:0.6},
             roadsend:{name:"Lincoln City surf cam",url:"https://www.surf-forecast.com/breaks/Lincoln-City/webcams/latest",mi:2.1},
             capelookout:{name:"Cape Lookout surf cam",url:"https://www.surf-forecast.com/breaks/Cape-Lookout/webcams/latest",mi:1.4}};
 let obsData={};   // spotId -> [{id,name,kind,dist_mi,spd,gst,dir,age_min,...}]
 if(!settings.check) settings.check=JSON.parse(JSON.stringify(DEFAULT_CHECK));
-function saveSettings(){ try{localStorage.setItem("goc.settings",JSON.stringify(settings))}catch(e){} }
+function saveLocal(){ try{localStorage.setItem("goc.settings",JSON.stringify(settings))}catch(e){} }
+function saveSettings(){ settings.updatedAt=new Date().toISOString(); saveLocal(); syncSchedulePush(); }
 
 let forecasts = {};   // spotId -> doc
 let dayKeys = [];      // ["2026-10-15",...]
@@ -383,7 +386,7 @@ function bestPerDay(homeKey, maxDrive, style){
   const out={};
   for(const d of dayKeys){
     let best=null;
-    for(const spot of SPOTS){ const f=forecasts[spot.id]; if(!f) continue; const drive=driveMins(spot); if(drive==null||drive>maxDrive) continue;
+    for(const spot of allSpots()){ const f=forecasts[spot.id]; if(!f) continue; const drive=driveMins(spot); if(drive==null||drive>maxDrive) continue;
       const r=dayScore(spot,f,d,style); if(!r) continue; if(!best||r.score>best.r.score||(r.score===best.r.score&&drive<best.drive)) best={spot,r,drive}; }
     out[d]=best;
   }
@@ -416,7 +419,7 @@ function alertDigest(){
     dayKeys.slice(0, A.lead+1).forEach((d,di)=>{
       if(di===0 && !A.sameDay) return;
       const dow=new Date(d+"T12:00:00").getDay(); if(!A.days.includes(dow)) return;
-      const rows=SPOTS.map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const drive=driveMins(spot); if(drive==null||drive>A.maxDrive) return null; const r=dayScore(spot,f,d,settings.style); return r?{spot,r,drive}:null; })
+      const rows=allSpots().map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const drive=driveMins(spot); if(drive==null||drive>A.maxDrive) return null; const r=dayScore(spot,f,d,settings.style); return r?{spot,r,drive}:null; })
         .filter(x=>x && x.r.score>=A.minScore && (!A.confidence || di===0 || x.r.agree==="Models agree"))
         .sort((a,b)=>b.r.score-a.r.score||a.drive-b.drive);
       if(rows.length) hits.push({d,rows});
@@ -433,7 +436,7 @@ function digestText(dg){
 /* ---------- render ---------- */
 function computeAll(){
   const tm=dayKeys[1];
-  const rows=SPOTS.map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const r=dayScore(spot,f,selDay,settings.style); if(!r) return null;
+  const rows=allSpots().map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const r=dayScore(spot,f,selDay,settings.style); if(!r) return null;
     const rt= tm&&tm!==selDay? dayScore(spot,f,tm,settings.style):null; return {spot,f,r,rt,drive:driveMins(spot)??999}; }).filter(Boolean);
   const byScore=(a,b)=> b.r.score-a.r.score || a.drive-b.drive;
   if(settings.sort==="distance") return rows.sort((a,b)=> a.drive-b.drive || b.r.score-a.r.score);
@@ -478,7 +481,7 @@ function row({spot,r,rt,drive}){
     <div class="pic${spot.photo===false?" nophoto":""}">${spot.photo===false?GLYPH:`<img src="img/${spot.id}.jpg" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
     <div style="min-width:0"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}</span></div>
       <div class="wind">${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)} · ${hhmm(r.from)}–${hhmm(r.to)}${r.wh!=null?` · ${r.wh.toFixed(0)}ft`:""} ${chips.join(" ")}</div></div>
-    <div class="drive">${mins(drive)}<small>${drive>settings.radius?"beyond":(settings.home==="X"?"est.":"drive")}</small></div></button>
+    <div class="drive">${mins(drive)}<small>${drive>settings.radius?"beyond":(settings.home==="X"||spot.kept?"est.":"drive")}</small></div></button>
     <div id="detail-${spot.id}"${openSpot===spot.id?"":" hidden"}>${openSpot===spot.id?detail({spot,r,drive}):""}</div></div>`;
 }
 function detail({spot,r,f}){
@@ -520,9 +523,10 @@ function detail({spot,r,f}){
   const cam=CAMS[spot.id]; 
   const plan=`Heading to ${spot.name} ${dayLabel(selDay)[0]} ${hhmm(r.from)}–${hhmm(r.to)}, ${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)}. Directions: ${mapsUrl(spot)}`;
   return `${svg}<div class="kv">${kv.map(([k,v,c])=>`<div${c?` class="${c}"`:""}><b>${k}</b><span>${v}</span></div>`).join("")}</div>${hold}${dis}
-    <p>${esc(spot.notes)}</p><p><b>Parking:</b> ${esc(spot.parking)}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
+    ${spot.notes?`<p>${esc(spot.notes)}</p>`:""}<p><b>Parking:</b> ${esc(spot.parking||(spot.kept?"not noted":""))}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
     ${Object.keys(ov).length? `<p class="hold"><b>Your limits here:</b> ${Object.entries(ov).map(([k,v])=>`${k} ${v}`).join(", ")} · <button class="link" data-limits="${spot.id}">edit</button></p>`:""}
-    <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}</div>`;
+    <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}${spot.kept?`<button class="btn" data-unkeep="${spot.id}">Remove this spot</button>`:""}</div>
+    ${spot.kept?`<p class="hold" style="margin-top:8px"><b>Kept spot</b> · faces ${compass(spot.facing)} · direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse) · drive times are road-distance estimates. Saved ${new Date(spot.addedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}${syncState.key?", synced":""}.</p>`:""}`;
 }
 
 /* ---------- sheets ---------- */
@@ -573,6 +577,23 @@ function placeSheet(){
   document.getElementById("plSave").onclick=()=>{ const m=document.getElementById("plll").value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); if(!m){ document.getElementById("plll").focus(); return; }
     settings.custom={name:document.getElementById("plname").value.trim()||"Custom spot",lat:+m[1],lon:+m[2]}; settings.home="X"; saveSettings(); closeSheet(); render(); };
 }
+function keepSheet(){
+  sheet("Keep a spot", `<p style="font-size:13px;color:var(--muted);margin:0 0 6px">A beach you ride that isn't in the list. Name, coordinates and which way the beach faces are all it needs; it gets a forecast and a score like the others, and it stays in your list${syncState.key?" on every linked device":""}.</p>
+    <div class="field"><label for="ksname">Spot name</label><input type="text" id="ksname" placeholder="Mission Bay" style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
+    <div class="field"><label for="ksll">Coordinates (lat, lon)</label><input type="text" id="ksll" placeholder="32.77, -117.25" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
+    <div class="field"><label>Beach faces (toward the water)</label><div class="kites" id="ksface">${["N","NE","E","SE","S","SW","W","NW"].map((c,i)=>`<button data-deg="${i*45}" aria-pressed="${c==="W"}">${c}</button>`).join("")}</div></div>
+    <ul class="check" style="margin:0"><li><input type="checkbox" id="kswaves" checked><label for="kswaves">Ocean beach <small>(pull the surf forecast)</small></label></li></ul>
+    <div class="actions" style="margin-top:8px"><button class="btn primary" id="ksKeep">Keep this spot</button><button class="btn" id="ksGPS">Use my current location</button></div>
+    ${settings.kept.length?`<div class="kites" style="margin-top:10px">${settings.kept.map(k=>`<button data-unkeep="${k.id}" title="Remove">${esc(k.name)} ×</button>`).join("")}</div>`:""}`);
+  host.querySelectorAll("#ksface button").forEach(b=>b.onclick=()=>host.querySelectorAll("#ksface button").forEach(o=>o.setAttribute("aria-pressed",o===b)));
+  document.getElementById("ksGPS").onclick=()=>{ const b=document.getElementById("ksGPS"); if(!navigator.geolocation){ b.textContent="Location not available"; return; } b.textContent="Locating…";
+    navigator.geolocation.getCurrentPosition(p=>{ document.getElementById("ksll").value=(+p.coords.latitude.toFixed(4))+", "+(+p.coords.longitude.toFixed(4)); b.textContent="Use my current location"; }, ()=>{ b.textContent="Couldn't get location — paste coordinates"; }, {enableHighAccuracy:true,timeout:12000,maximumAge:60000}); };
+  document.getElementById("ksKeep").onclick=()=>{ const name=document.getElementById("ksname").value.trim(); const m=document.getElementById("ksll").value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if(!name){ document.getElementById("ksname").focus(); return; } if(!m||Math.abs(+m[1])>90||Math.abs(+m[2])>180){ document.getElementById("ksll").focus(); return; }   // a bad coordinate would fail the batched forecast call for every spot
+    const fb=host.querySelector('#ksface button[aria-pressed="true"]'); const facing=fb?+fb.dataset.deg:270;
+    keepSpot({name,lat:+m[1],lon:+m[2],facing,waves:document.getElementById("kswaves").checked}); closeSheet(); render(); };
+  host.querySelectorAll("#sheet [data-unkeep]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); unkeepSpot(b.dataset.unkeep); keepSheet(); });
+}
 const COMFORT_DEF=[["minWind","Minimum wind I'll go out for","kn",6,20,1],["maxWind","Maximum sustained wind","kn",18,40,1],["maxGust","Maximum gust","kn",18,45,1],["maxSurf","Maximum surf","ft",1,15,1],["minHours","Minimum session length","h",1,6,1]];
 function comfortSliders(vals,prefix){
   return `<ul class="check">${COMFORT_DEF.map(([k,l,u,lo,hi,step])=>`<li style="display:block"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${l}</b><span class="chip" id="${prefix}l-${k}">${vals[k]} ${u}</span></div><input type="range" min="${lo}" max="${hi}" step="${step}" value="${vals[k]}" data-c="${k}" data-u="${u}" style="width:100%;accent-color:var(--accent)"></li>`).join("")}
@@ -583,7 +604,7 @@ function bindComfort(prefix, target, after){
   const st=document.getElementById(prefix+"-stretch"); if(st) st.onchange=()=>{ target.stretch=st.checked; after(); };
 }
 function limitsSheet(spotId){
-  const spot=SPOTS.find(s=>s.id===spotId); const ov=settings.overrides[spotId]||{};
+  const spot=allSpots().find(s=>s.id===spotId); const ov=settings.overrides[spotId]||{};
   const vals={...settings.comfort,...ov};
   sheet(`Limits · ${esc(spot.name)}`, `<p style="color:var(--muted);font-size:13px;margin:0 0 6px">Overrides for this spot only. Anything you don't touch follows your comfort profile.</p>
     ${comfortSliders(vals,"o")}
@@ -636,7 +657,10 @@ function riderSheet(){
     <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 4px;font-family:var(--body)">Comfort · what you're happy riding</h3>
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">The style switch on the home screen says what kind of day you want. These say what you'll put up with. Each can be overridden per spot from the spot's detail.</p>
     ${comfortSliders(settings.comfort,"c")}
-    <div class="actions" style="margin-top:8px"><button class="btn" id="resetComfort">Reset comfort</button></div>`);
+    <div class="actions" style="margin-top:8px"><button class="btn" id="resetComfort">Reset comfort</button></div>
+    <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:18px 0 4px;font-family:var(--body)">Sync across devices</h3>
+    <div id="syncBox">${syncSection()}</div>`);
+  bindSync();
   bindComfort("c", settings.comfort, ()=>{saveSettings(); render();});
   document.getElementById("resetComfort").onclick=()=>{ settings.comfort={...DEFAULT_COMFORT}; saveSettings(); render(); riderSheet(); };
   document.getElementById("w").onchange=e=>{ settings.weightLb=+e.target.value||185; saveSettings(); render(); };
@@ -693,13 +717,111 @@ document.getElementById("radius").oninput=e=>{settings.radius=+e.target.value;sa
 document.getElementById("days").onclick=e=>{const b=e.target.closest("[data-day]"); if(b){selDay=b.dataset.day;render();}};
 document.getElementById("list").onclick=e=>{ const c=e.target.closest("[data-check]"); if(c){checklist(c.dataset.check);return;}
   const lm=e.target.closest("[data-limits]"); if(lm){limitsSheet(lm.dataset.limits);return;}
+  const uk=e.target.closest("[data-unkeep]"); if(uk){ unkeepSpot(uk.dataset.unkeep); return; }
   const sh=e.target.closest("[data-share]"); if(sh){ const txt=sh.dataset.share; const done=()=>{sh.textContent="Copied — paste to a buddy"; setTimeout(()=>sh.textContent="Share plan",2500);};
     try{ navigator.clipboard.writeText(txt).then(done).catch(()=>{ const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy")}catch(_){} ta.remove(); done(); }); }catch(_){ done(); }
     return; } const b=e.target.closest("[data-open]"); if(!b) return; openSpot=openSpot===b.dataset.open?null:b.dataset.open; render(); if(openSpot){const el=document.getElementById("row-"+openSpot); el&&el.scrollIntoView({block:"nearest",behavior:"smooth"});} };
 document.getElementById("openCheck").onclick=()=>checklist(openSpot);
+document.getElementById("openKeep").onclick=keepSheet;
 document.getElementById("openSettings").onclick=riderSheet;
 document.getElementById("openHow").onclick=howSheet;
 document.getElementById("openAlerts").onclick=alertsSheet;
+
+/* ---------- kept spots ---------- */
+function sectorsFromFacing(f){
+  // f = compass bearing the beach faces (toward the water). Wind FROM that bearing is dead onshore.
+  const n=d=>((d%360)+360)%360;
+  return {best:[[n(f-30),n(f+30)]], work:[[n(f-80),n(f+80)]], off:[[n(f+130),n(f+230)]]};
+}
+function keepSpot({name,lat,lon,facing,waves}){
+  const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,24)||"spot";
+  let id="k-"+slug; while(allSpots().some(s=>s.id===id)) id="k-"+slug+"-"+Math.random().toString(36).slice(2,5);
+  const est=h=>Math.round(haversineMi(h.lat,h.lon,lat,lon)*1.35/47*60/5)*5;
+  const spot={id,name,region:"Kept",lat,lon,plat:lat,plon:lon,facing,dir:sectorsFromFacing(facing),waves:!!waves,pass:false,photo:false,notes:"",parking:"",driveLO:est(HOMES.LO),driveBC:est(HOMES.BC),kept:true,addedAt:new Date().toISOString()};
+  settings.kept.push(spot); saveSettings();
+  refreshAll(false);   // pulls a forecast for the new spot; the list re-sorts once when it lands
+  return spot;
+}
+function unkeepSpot(id){
+  settings.kept=settings.kept.filter(s=>s.id!==id); delete settings.overrides[id]; delete forecasts[id];
+  if(openSpot===id) openSpot=null; saveSettings(); render();
+}
+
+/* ---------- settings sync (Cloudflare Worker, see sync/ and docs/SETUP-SYNC.md) ---------- */
+// Optional. With no Worker URL the page behaves exactly as before: localStorage only.
+// Set SYNC_URL once the Worker is deployed, or paste the URL in the Rider sheet (it travels in the device link).
+const SYNC_URL="";
+let syncState={url:SYNC_URL, key:null, remoteUpdatedAt:null, status:"", lastPull:0};
+try{ const s=JSON.parse(localStorage.getItem("goc.sync")||"null"); if(s&&s.key){ syncState={...syncState,...s}; } }catch(e){}
+function syncSave(){ try{ localStorage.setItem("goc.sync",JSON.stringify({url:syncState.url,key:syncState.key,remoteUpdatedAt:syncState.remoteUpdatedAt})); }catch(e){} }
+function syncOn(){ return !!(syncState.key && syncState.url); }
+function syncNewKey(){ const b=new Uint8Array(32); crypto.getRandomValues(b); return btoa(String.fromCharCode(...b)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function syncLink(){ return location.origin+location.pathname+"#sync="+syncState.key+"&url="+encodeURIComponent(syncState.url); }
+function syncSetStatus(t){ syncState.status=t; const el=document.getElementById("syncStatus"); if(el) el.textContent=t; }
+async function syncFetch(method, body){
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),15000);
+  try{ const r=await fetch(syncState.url.replace(/\/+$/,"")+"/v1/settings",{method,signal:c.signal,headers:{Authorization:"Bearer "+syncState.key,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
+    let d=null; try{ d=await r.json(); }catch(e){} return {status:r.status,data:d}; } finally{ clearTimeout(t); }
+}
+function applyRemote(doc){
+  // Server copy wins only when it is newer; defaults are re-merged exactly as on page load.
+  const s=doc.settings||{};
+  settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], check:s.check||settings.check, updatedAt:doc.updatedAt};
+  syncState.remoteUpdatedAt=doc.updatedAt; saveLocal(); syncSave();
+}
+async function syncPush(){
+  if(!syncOn()) return;
+  try{
+    const r=await syncFetch("PUT",{settings, updatedAt:settings.updatedAt||new Date().toISOString(), base:syncState.remoteUpdatedAt});
+    if(r.status===200){ syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); syncSetStatus("Synced "+new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})); return; }
+    if(r.status===409 && r.data){
+      // Another device wrote first. Newer timestamp wins; if that is us, push again on top of theirs.
+      if(!settings.updatedAt || r.data.updatedAt>settings.updatedAt){ applyRemote(r.data); render(); syncSetStatus("Settings updated from another device"); }
+      else { syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); return syncPush(); }
+      return;
+    }
+    syncSetStatus("Sync failed ("+r.status+"); keeping this device's copy");
+  }catch(e){ syncSetStatus("Offline — will sync when back online"); }
+}
+let syncTimer=null;
+function syncSchedulePush(){ if(!syncOn()) return; clearTimeout(syncTimer); syncTimer=setTimeout(syncPush,1500); }
+async function syncPull(){
+  if(!syncOn()) return; syncState.lastPull=Date.now();
+  try{
+    const r=await syncFetch("GET");
+    if(r.status===404){ await syncPush(); return; }                      // first device: migrate the local copy up
+    if(r.status!==200||!r.data){ syncSetStatus("Sync failed ("+r.status+")"); return; }
+    if(!settings.updatedAt || r.data.updatedAt>settings.updatedAt){ applyRemote(r.data); render(); syncSetStatus("Synced "+new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})); }
+    else if(r.data.updatedAt<settings.updatedAt){ syncState.remoteUpdatedAt=r.data.updatedAt; await syncPush(); }
+    else { syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); syncSetStatus("Synced"); }
+  }catch(e){ syncSetStatus("Offline — showing this device's settings"); }
+}
+function syncSection(){
+  const inp='style="font:500 14px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);width:100%;max-width:420px;box-sizing:border-box"';
+  if(!syncOn()) return `<p style="color:var(--muted);font-size:13px;margin:0 0 6px">Off. Your profile, limits, checklist edits, alert settings and kept spots live on this device only. Turning it on needs the sync service from <b>docs/SETUP-SYNC.md</b> (a free Cloudflare Worker); paste its address here once.</p>
+    <div class="field"><label for="syncUrl">Sync service address</label><input type="url" id="syncUrl" value="${esc(syncState.url||"")}" placeholder="https://coastal-kiteboarding-sync.<you>.workers.dev" ${inp}></div>
+    <div class="actions"><button class="btn primary" id="syncOn">Turn on sync</button></div><p id="syncStatus" style="color:var(--muted);font-size:13px;margin:6px 0 0">${esc(syncState.status||"")}</p>`;
+  return `<p style="color:var(--muted);font-size:13px;margin:0 0 6px">On. Changes save here first and copy to the sync service a moment later; other linked devices pick them up when opened.</p>
+    <div class="actions"><button class="btn primary" id="syncLink">Link another device</button><button class="btn" id="syncPull">Pull now</button><button class="btn" id="syncOff">Unlink this device</button></div>
+    <div id="syncLinkBox" hidden style="margin-top:8px"><p style="font-size:13px;margin:0 0 4px">Open this link on the other device (text or AirDrop it to yourself). Anyone with it can read and change your settings, so don't post it.</p><input type="text" id="syncLinkText" readonly ${inp}><div class="actions" style="margin-top:6px"><button class="btn" id="syncCopy">Copy link</button>${navigator.share?'<button class="btn" id="syncShare">Share…</button>':""}</div></div>
+    <p id="syncStatus" style="color:var(--muted);font-size:13px;margin:6px 0 0">${esc(syncState.status||"")}</p>`;
+}
+function bindSync(){
+  const on=document.getElementById("syncOn"); if(on) on.onclick=()=>{ const u=(document.getElementById("syncUrl").value||"").trim().replace(/\/+$/,""); if(!/^https?:\/\//.test(u)){ document.getElementById("syncUrl").focus(); return; }
+    syncState.url=u; syncState.key=syncNewKey(); syncState.remoteUpdatedAt=null; syncSave(); if(!settings.updatedAt) settings.updatedAt=new Date().toISOString(); saveLocal(); syncSetStatus("Connecting…"); syncPull().then(()=>{ document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); }); };
+  const lk=document.getElementById("syncLink"); if(lk) lk.onclick=()=>{ const b=document.getElementById("syncLinkBox"); b.hidden=!b.hidden; document.getElementById("syncLinkText").value=syncLink(); };
+  const cp=document.getElementById("syncCopy"); if(cp) cp.onclick=()=>{ const t=document.getElementById("syncLinkText"); t.select(); const done=()=>{cp.textContent="Copied"; setTimeout(()=>cp.textContent="Copy link",2000);}; try{ navigator.clipboard.writeText(t.value).then(done).catch(()=>{ try{document.execCommand("copy")}catch(_){} done(); }); }catch(_){ done(); } };
+  const sh=document.getElementById("syncShare"); if(sh) sh.onclick=()=>{ navigator.share({title:"Bistué Boarding sync link",text:"Open this on the other device to link it:",url:syncLink()}).catch(()=>{}); };
+  const pl=document.getElementById("syncPull"); if(pl) pl.onclick=()=>{ syncSetStatus("Pulling…"); syncPull(); };
+  const off=document.getElementById("syncOff"); if(off) off.onclick=()=>{ syncState={...syncState,key:null,remoteUpdatedAt:null,status:""}; try{localStorage.removeItem("goc.sync")}catch(e){} document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); render(); };
+}
+(function syncFromHash(){
+  // A device link: #sync=<key>&url=<worker>. Store it, drop it from the address bar, pull.
+  const m=location.hash.match(/^#sync=([A-Za-z0-9_\-]{32,})(?:&url=([^&]+))?/); if(!m) return;
+  syncState.key=m[1]; if(m[2]) syncState.url=decodeURIComponent(m[2]); syncState.remoteUpdatedAt=null; syncSave();
+  try{ history.replaceState(null,"",location.pathname+location.search); }catch(e){ location.hash=""; }
+  syncState.status="Linked — pulling your settings…";
+})();
 
 /* ---------- data ---------- */
 function ingest(docs, fetchedAt){
@@ -713,7 +835,7 @@ function ingest(docs, fetchedAt){
   const fa=new Date(fetchedAt||first.fetchedAt);
   const ageMin=Math.round((Date.now()-fa.getTime())/60000);
   const age= ageMin<60? ageMin+" min ago" : ageMin<1440? Math.round(ageMin/60)+"h ago" : Math.round(ageMin/1440)+"d ago";
-  document.getElementById("sub").textContent="Updated "+age+(ageMin>360?" (stale)":"")+" · knots · "+SPOTS.length+" spots";
+  document.getElementById("sub").textContent="Updated "+age+(ageMin>360?" (stale)":"")+" · knots · "+allSpots().length+" spots";
   render();
 }
 const NWS_STATIONS = {"stevenson":[{"id":"ODT78","name":"I84 WB at Cascade Locks MP44.57","kind":"nws","lat":45.66931,"lon":-121.88484,"dist_mi":1.8},{"id":"LGFO3","name":"LOG CREEK","kind":"nws","lat":45.49658,"lon":-121.89646,"dist_mi":13.7}],"hoodriver":[{"id":"K4S2","name":"Ken Jernstedt Airfield","kind":"nws","lat":45.67457,"lon":-121.53493,"dist_mi":3.0},{"id":"PNGO","name":"PINEGROVE","kind":"nws","lat":45.65222,"lon":-121.50917,"dist_mi":4.4}],"rufus":[{"id":"E2137","name":"EW2137 Wasco","kind":"nws","lat":45.62733,"lon":-120.60017,"dist_mi":7.8},{"id":"E0859","name":"EW0859 Centerville","kind":"nws","lat":45.73917,"lon":-120.92683,"dist_mi":9.9}],"fortstevens":[{"id":"KAST","name":"Astoria, Astoria Regional Airport","kind":"nws","lat":46.15694,"lon":-123.8825,"dist_mi":5.2}],"gearhart":[{"id":"KAST","name":"Astoria, Astoria Regional Airport","kind":"nws","lat":46.15694,"lon":-123.8825,"dist_mi":9.1},{"id":"ODT09","name":"US26 WB at Quartz Creek MP24.23","kind":"nws","lat":45.84225,"lon":-123.51849,"dist_mi":23.6}],"manzanita":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":19.3},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":21.7}],"rockaway":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":12.9},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":15.0}],"bayocean":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":8.7},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":10.1}],"oceanside":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":8.1},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":8.1}],"capelookout":[{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":8.5},{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":10.5}],"pacificcity":[{"id":"AT297","name":"PACCTY-2 Pacific City","kind":"nws","lat":45.19683,"lon":-123.96733,"dist_mi":0.3},{"id":"CDFO3","name":"CEDAR","kind":"nws","lat":45.21167,"lon":-123.77194,"dist_mi":9.7}],"roadsend":[{"id":"AP682","name":"W7KKE-3 Road's End","kind":"nws","lat":45.011,"lon":-124.00583,"dist_mi":0.2},{"id":"AT297","name":"PACCTY-2 Pacific City","kind":"nws","lat":45.19683,"lon":-123.96733,"dist_mi":13.1}],"newport":[{"id":"KONP","name":"Newport, Newport Municipal Airport","kind":"nws","lat":44.58028,"lon":-124.05806,"dist_mi":2.1},{"id":"AS531","name":"YACHTS Yachats","kind":"nws","lat":44.34303,"lon":-124.09212,"dist_mi":18.5}],"florence":[],"floras":[]};
@@ -732,17 +854,18 @@ async function fetchJSON(url, ms=25000){
 const rnd=(xs,nd=1)=>xs.map(v=>v==null?null:+v.toFixed(nd));
 async function fetchForecasts(){
   // One Open-Meteo call for all spots (multi-location), one marine call for the coast spots.
-  const lat=SPOTS.map(s=>s.lat).join(","), lon=SPOTS.map(s=>s.lon).join(",");
+  const all=allSpots();
+  const lat=all.map(s=>s.lat).join(","), lon=all.map(s=>s.lon).join(",");
   const q=`latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code&models=best_match,gfs_seamless,icon_seamless&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
   const w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+q, 40000);
   const arr=Array.isArray(w)?w:[w];
   const now=new Date().toISOString().slice(0,19)+"+00:00";
   const docs={};
-  SPOTS.forEach((s,i)=>{ const d=arr[i]; if(!d||!d.hourly) return; const h=d.hourly; const col=(n,m="best_match")=>h[`${n}_${m}`]||h[n]||new Array(h.time.length).fill(null); const cur=d.current||{}; const cv=n=>cur[`${n}_best_match`]??cur[n]??null;
+  all.forEach((s,i)=>{ const d=arr[i]; if(!d||!d.hourly) return; const h=d.hourly; const col=(n,m="best_match")=>h[`${n}_${m}`]||h[n]||new Array(h.time.length).fill(null); const cur=d.current||{}; const cv=n=>cur[`${n}_best_match`]??cur[n]??null;
     docs[s.id]={spotId:s.id,fetchedAt:now,time:h.time,spd:rnd(col("wind_speed_10m")),gst:rnd(col("wind_gusts_10m")),dir:rnd(col("wind_direction_10m"),0),temp:rnd(col("temperature_2m"),0),pop:rnd(col("precipitation_probability"),0),code:col("weather_code"),vis:rnd(col("visibility"),0),
       m:{gfs:{spd:rnd(col("wind_speed_10m","gfs_seamless")),gst:rnd(col("wind_gusts_10m","gfs_seamless")),dir:rnd(col("wind_direction_10m","gfs_seamless"),0)},icon:{spd:rnd(col("wind_speed_10m","icon_seamless")),gst:rnd(col("wind_gusts_10m","icon_seamless")),dir:rnd(col("wind_direction_10m","icon_seamless"),0)}},
       now:{time:cur.time,spd:cv("wind_speed_10m"),gst:cv("wind_gusts_10m"),dir:cv("wind_direction_10m"),temp:cv("temperature_2m"),code:cv("weather_code")}}; });
-  const wave=SPOTS.filter(s=>s.waves);
+  const wave=all.filter(s=>s.waves);
   try{
     const mq=`latitude=${wave.map(s=>s.lat).join(",")}&longitude=${wave.map(s=>s.lon).join(",")}&hourly=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
     const m=await fetchJSON("https://marine-api.open-meteo.com/v1/marine?"+mq, 40000); const marr=Array.isArray(m)?m:[m];
@@ -790,9 +913,10 @@ async function refreshAll(manual){
   try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"null"); if(c&&c.docs){ obsData=c.obs||{}; ingest(c.docs,c.fetchedAt);} }catch(e){}
   setRefreshUI("idle","");
   document.getElementById("refreshBtn").onclick=()=>refreshAll(true);
+  if(syncOn()) syncPull();   // settings sync never holds up the forecast
   refreshAll(false);
   // re-fetch when the app comes back to the foreground after 30+ minutes
-  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && lastFetchedAt && Date.now()-Date.parse(lastFetchedAt)>30*60000) refreshAll(false); });
+  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState!=="visible") return; if(lastFetchedAt && Date.now()-Date.parse(lastFetchedAt)>30*60000) refreshAll(false); if(syncOn() && Date.now()-syncState.lastPull>5*60000) syncPull(); });
 })();
 </script>
 </body>
