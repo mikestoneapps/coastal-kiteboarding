@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Resolve nearest public wind stations per spot (once, cached to stations.json) and fetch latest observations
-into out/obs.json: {spotId: [{id,name,kind,dist_mi,time,spd,gst,dir,wvht,age_min}, ...]}.
-Sources: NWS/METAR via api.weather.gov (nearest 2 land stations), NOAA NDBC realtime2 (hand-mapped buoys)."""
+into obs.json (repo root, or the path given as the first argument):
+{fetchedAt, obs: {spotId: [{id,name,kind,dist_mi,time,spd,gst,dir,wvht_ft,age_min}, ...]}}.
+Sources: NWS/METAR via api.weather.gov (nearest 2 land stations), NOAA NDBC realtime2 (hand-mapped buoys).
+Run hourly by .github/workflows/observations.yml; the page reads obs.json same-origin."""
 import json, os, sys, time, math, urllib.request, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "out"); os.makedirs(OUT, exist_ok=True)
-UA = {"User-Agent": "GorgeOrCoast/1.0 (prototype kite app; claude.ai)", "Accept": "application/geo+json, application/json"}
+OUT_FILE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "obs.json")
+UA = {"User-Agent": "CoastalKiteboarding/1.0 (github.com/mikestoneapps/coastal-kiteboarding)", "Accept": "application/geo+json, application/json"}
 spots = []
 CACHE = os.path.join(HERE, "stations.json")
 
@@ -97,7 +99,9 @@ def fetch_obs(stations):
             if o: rows.append({**{k: st[k] for k in ("id", "name", "kind", "dist_mi")}, **o})
             time.sleep(0.3)
         out[sid] = rows
-    json.dump({"fetchedAt": now.isoformat(timespec="seconds"), "obs": out}, open(os.path.join(OUT, "obs.json"), "w"), separators=(",", ":"))
+    with open(OUT_FILE, "w") as fh:
+        json.dump({"fetchedAt": now.isoformat(timespec="seconds"), "obs": out}, fh, separators=(",", ":"))
+        fh.write("\n")
     return out
 
 if __name__ == "__main__":
