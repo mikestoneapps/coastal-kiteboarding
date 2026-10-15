@@ -23,16 +23,16 @@ Check: the repo should show `CLAUDE.md`, `README.md`, `SPEC.md`, `scoring.js`, `
 
 > Read CLAUDE.md and SPEC.md. Implement Phase 1 of docs/BUILD-PLAN.md: an hourly GitHub Actions workflow that runs obs_standalone.py and commits obs.json, and make index.html read obs.json alongside its direct NWS fetches. Run the script once locally to generate a first obs.json and commit it. Test the page in a headless browser before opening the PR.
 
-5. Claude works for a while and shows a diff (`+120 −8`). Click it to read the changes. Then click **Create PR**.
+5. Claude works for a while and usually opens the pull request itself; its final message links it as "#N". If it only shows a diff (`+120 −8`) and no PR link, click the diff to review and then click **Create PR**.
 
-## 4. Approve and ship
-1. Open the pull request link on GitHub. Scroll through the "Files changed" tab if you like.
+## 4. Approve and ship (this happens on GitHub, not in Claude)
+1. Open the pull request link on GitHub (or the repo's **Pull requests** tab). Scroll through the "Files changed" tab if you like.
 2. Click **Merge pull request** → **Confirm merge**.
 3. GitHub Pages redeploys `main` automatically in about a minute. Reload the live link on your phone.
 4. The hourly job appears under the repo's **Actions** tab; the first run happens at the next scheduled time, or click the workflow → **Run workflow** to trigger it now.
 
 ## 5. Keep going
-One phase per session. Start each with "Read CLAUDE.md and docs/BUILD-PLAN.md, then do Phase N." If Claude asks a question you can't answer (his quiver, his favorite spots), say "use the default and note it under Open questions."
+One phase per session, in a **new** session each time. Start each with "Read CLAUDE.md and docs/BUILD-PLAN.md, then do Phase N. Show me your plan before making changes." Phases that add an outside service (Phase 2: Cloudflare for sync; Phase 3: push/email) end with a setup doc in `docs/` telling you what to create and where to paste the result; do that after merging. If Claude asks a question you can't answer (his quiver, his favorite spots), say "use the default and note it under Open questions."
 
 ## If something goes wrong
 - **Live page broken after a merge**: on GitHub, open the merged PR → **Revert** → merge the revert. Pages redeploys the previous version.
