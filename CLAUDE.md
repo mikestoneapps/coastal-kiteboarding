@@ -24,6 +24,7 @@ A kiteboarding spot-finder for one rider in Portland, OR (gift for his 50th). Th
 - `stations.py`, `obs_standalone.py` — fetch station observations (NWS via api.weather.gov; NDBC via realtime2 text feed). NDBC has no CORS, so buoys must be fetched server-side.
 - `fetch_forecast.py` — reference Open-Meteo fetch (3 models + marine).
 - `checklist-defaults.json` — default checklist items.
+- `sync/` — settings-sync Cloudflare Worker (`worker.js`, `wrangler.toml`, `test.mjs`). Optional; the page runs on localStorage alone until a Worker URL is entered in the Rider sheet. Setup in `docs/SETUP-SYNC.md`.
 - `docs/` — build plan and setup notes.
 
 ## Conventions

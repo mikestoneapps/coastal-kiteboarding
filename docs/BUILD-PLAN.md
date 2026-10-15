@@ -24,6 +24,8 @@ Goal: rider profile, comfort limits, per-spot overrides, checklist edits and ale
 - Migrate existing localStorage (`goc.settings`) up on first login; keep localStorage as the offline cache.
 - Add "Keep this spot" for discovered/added spots (Phase 4 uses it).
 
+Status (2026-10-15): built. Backend is a Cloudflare Worker + KV (`sync/worker.js`, free tier, never pauses) with a **device-link** login instead of a magic-link email: the first device generates a random sync key, "Link another device" shares a link carrying it, no mail sender or domain needed. The page works unchanged with sync off; `docs/SETUP-SYNC.md` has the no-terminal dashboard steps, and `.github/workflows/sync-worker.yml` deploys automatically once Cloudflare secrets exist. `goc.settings` migrates forward (gains `updatedAt`, `kept`); `goc.cache` and the daily `goc.check.*` ticks stay local. Conflicts resolve newest-wins via the Worker's 409. "Keep a spot" lives under the list: name + coordinates + which way the beach faces → direction sectors (onshore ±30° best, ±80° works, reverse ±50° offshore), estimated drive times, forecast in the same batched call, `k-` ids. The Worker is not deployed yet: the rider (or whoever sets up the gift) follows SETUP-SYNC.md once.
+
 ## Phase 3 — Alerts and the weekly outlook
 Goal: SPEC §8. One push digest per refresh run; Sunday 6 pm email.
 - Hourly job (extend Phase 1's workflow or a second one) that pulls forecasts for all spots, scores them server-side with `scoring.js` (run under Node) using each user's saved parameters, and decides what to send. Web Push (VAPID) for the PWA; email via a free-tier sender (Resend/Postmark) for the outlook.
@@ -38,7 +40,7 @@ Goal: SPEC §5. When outside the home region, discover spots within the drive ra
 Forecast accuracy memory and per-spot bias (SPEC "Add soon after" #7), seasonal context, two-spot compare, post-session feedback, native iOS wrapper for a home-screen widget if push proves unreliable.
 
 ## Small fixes queued (do in any phase)
-- Drive-radius slider stops at 4 h; Floras Lake is 5 h from Lake Oswego. Extend the slider to 6 h (step 15 min), or always surface a spot scoring 8+ regardless of radius. Noted 2026-10-15 after Phase 1 verification.
+- ~~Drive-radius slider stops at 4 h; Floras Lake is 5 h from Lake Oswego.~~ Slider extended to 6 h (15-min steps) in Phase 2. Spots scoring 8+ already surface up to 2× the radius via the comfort profile's "drive further" toggle.
 
 ## Open questions (for the rider, after the surprise)
 - Which spots he actually rides; their real launch rules and parking.
@@ -46,8 +48,11 @@ Forecast accuracy memory and per-spot bias (SPEC "Add soon after" #7), seasonal 
 - Riding style (freeride / wave / foil) and comfort limits.
 - Whether tide should become a scoring factor at his spots.
 - His own photos for the spot tiles.
+- Whether the device-link sync is enough, or he wants a real email login (Phase 2 chose device links to avoid an email sender).
+- Kept spots: should "beach faces" be inferred from the coastline automatically (Phase 4 plans this) rather than picked from a compass?
 
 ## Decisions log
 - 2026-10-15: Harbor look chosen over Chart / Instrument / Poster alternatives. Keep it.
 - 2026-10-15: Sort options are Today / Tomorrow / Distance; "Today" sorts by the selected day's score.
 - 2026-10-15: Hosted as a static page on GitHub Pages; no app store. Native only if push/widget demand it.
+- 2026-10-15: Settings sync on Cloudflare Worker + KV with device-link login (no email, no passwords). Supabase rejected because free projects pause after a week idle, which an off-season rider would hit.
