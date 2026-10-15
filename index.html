@@ -94,6 +94,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .kv div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
 .kv b{display:block;font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
 .kv span{font:500 14px var(--mono)}
+.kv div.stale{opacity:.55}.kv div.stale span{color:var(--muted)}
 .strip{width:100%;height:auto;display:block}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 12px;border-radius:8px;font:600 14px var(--body);cursor:pointer;text-decoration:none}
@@ -287,10 +288,36 @@ function hourScore(spot, f, i, style){
   return {v:gate?0:v*10, gate:g&&g.gate, why: worst.why||worst.gate, detail: g? g.detail: worst.detail, mine: g? !!g.mine: !!worst.mine};
 }
 function m2ft(m){ return m==null?null:m*3.281; }
+// Age of a station reading in minutes, from its own timestamp (age_min in obs.json is frozen at fetch time).
+function ageOf(o){ const t=o.time? Date.parse(o.time):NaN; return isNaN(t)? (o.age_min==null?null:o.age_min) : Math.max(0,Math.round((Date.now()-t)/60000)); }
+function agoText(min){ return min==null? "age unknown" : min<60? min+" min ago" : min<1440? Math.round(min/60)+"h ago" : Math.round(min/1440)+"d ago"; }
+const OBS_MAX_AGE=120;   // minutes; older readings are shown greyed and never blended into the score
 function stationFor(spotId){
-  const rows=(obsData[spotId]||[]).filter(o=>o.spd!=null && o.age_min!=null && o.age_min<=120);
+  // Nearest station with a wind reading under 2 h old; the row list is sorted by distance.
+  const rows=(obsData[spotId]||[]).map(o=>({...o,age_min:ageOf(o)})).filter(o=>o.spd!=null && o.age_min!=null && o.age_min<=OBS_MAX_AGE);
   if(!rows.length) return null;
   const o=rows[0]; o.trust= o.dist_mi<=3?1: o.dist_mi<=10?0.5: 0.2; return o;
+}
+function latestStation(spotId){
+  // For display only: the fresh nearest station if there is one, else the freshest stale reading.
+  const fresh=stationFor(spotId); if(fresh) return fresh;
+  const rows=(obsData[spotId]||[]).map(o=>({...o,age_min:ageOf(o)})).filter(o=>o.spd!=null && o.age_min!=null).sort((a,b)=>a.age_min-b.age_min);
+  return rows[0]||null;
+}
+function buoyWaves(spotId){
+  // Freshest buoy wave-height reading for the spot (NDBC only; up to 3 h old).
+  const rows=(obsData[spotId]||[]).filter(o=>o.wvht_ft!=null).map(o=>({...o,age_min:ageOf(o)})).filter(o=>o.age_min!=null && o.age_min<=180).sort((a,b)=>a.age_min-b.age_min);
+  return rows[0]||null;
+}
+// Merge two obs maps (spotId -> rows): union by station id, the fresher reading wins, nearest first.
+function mergeObs(a,b){
+  const out={};
+  for(const sid of new Set([...Object.keys(a||{}),...Object.keys(b||{})])){
+    const byId={};
+    for(const o of [...(a[sid]||[]),...(b[sid]||[])]){ const cur=byId[o.id]; if(!cur || (Date.parse(o.time)||0)>(Date.parse(cur.time)||0)) byId[o.id]=o; }
+    out[sid]=Object.values(byId).sort((x,y)=>(x.dist_mi||0)-(y.dist_mi||0));
+  }
+  return out;
 }
 function blendToday(spot,f){
   // Replace the current hour's forecast with a trust-weighted blend of the nearest station reading. Today only.
@@ -471,10 +498,10 @@ function detail({spot,r,f}){
   });
   svg+=`</svg>`;
   const plain=(spd,gst,dir)=> spd==null? "–" : `${Math.round(spd)} kn${gst!=null&&gst>spd+1?` gusting ${Math.round(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
-  const st=stationFor(spot.id);
+  const st=latestStation(spot.id);
   const kv=[];
-  if(st) kv.push([`Wind measured now`,`${plain(st.spd,st.gst,st.dir)} <small>${esc(st.name)}, ${st.dist_mi} mi away, ${st.age_min} min ago${st.gst==null?" · no gust data":""}</small>`]);
-  else kv.push(["Wind measured now","<small>No public wind station within 25 mi of this spot</small>"]);
+  if(st){ const stale=st.age_min>OBS_MAX_AGE; kv.push([stale?`Wind measured · ${agoText(st.age_min)}`:`Wind measured now`,`${plain(st.spd,st.gst,st.dir)} <small>${esc(st.name)}, ${st.dist_mi} mi away, ${agoText(st.age_min)}${st.gst==null?" · no gust data":""}${stale?" · too old to score":""}</small>`, stale?"stale":""]); }
+  else kv.push(["Wind measured now",`<small>${(obsData[spot.id]||[]).length||NWS_STATIONS[spot.id]&&NWS_STATIONS[spot.id].length? "No recent reading from the nearest stations" : "No public wind station within 25 mi of this spot"}</small>`]);
   const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
   const ni=forecasts[spot.id].time.findIndex(t=>t.slice(0,13)===nowLA); const raw=forecasts[spot.id];
   const at=(k)=> ni>=0&&ni+k<raw.time.length? [raw.spd[ni+k],raw.gst[ni+k],raw.dir[ni+k],hhmm(+raw.time[ni+k].slice(11,13))] : null;
@@ -484,14 +511,15 @@ function detail({spot,r,f}){
           ["Wind forecast · in 5 hours", h5? `${plain(h5[0],h5[1],h5[2])} <small>model, for ${h5[3]}</small>` : "–"],
           [`Best window · ${hhmm(r.from)}–${hhmm(r.to)}`,`${plain(r.spd,r.gst,r.dir)} <small>the best ${r.window}-hour stretch ${(l=>l==="Today"||l==="Tomorrow"?l.toLowerCase():new Date(selDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",timeZone:"America/Los_Angeles"}))(dayLabel(selDay)[0])}; this is what the score rates</small>`],
           ["Kite",`${kiteFor(r.spd)}m <small>for ${settings.weightLb} lb in ${Math.round(r.spd)} kn</small>`],["Air",`${Math.round(r.temp)}°F`]);
-  if(r.wh!=null) kv.push(["Surf",`${r.wh.toFixed(1)}ft @ ${r.wp?r.wp.toFixed(0):"–"}s`]);
+  const bwv=spot.waves? buoyWaves(spot.id):null;
+  if(r.wh!=null || bwv) kv.push(["Surf",`${r.wh!=null? `${r.wh.toFixed(1)}ft @ ${r.wp?r.wp.toFixed(0):"–"}s`:"–"}${bwv? ` <small>buoy reads ${bwv.wvht_ft.toFixed(1)} ft · ${esc(bwv.name)}, ${bwv.dist_mi} mi away, ${agoText(bwv.age_min)}</small>`:""}`]);
   if(r.agree) kv.push(["Confidence",r.agree]);
   const L=limitsFor(spot.id), ov=settings.overrides[spot.id]||{};
   const hold= r.detail? `<p class="hold"><b>What's holding it back:</b> ${esc(r.detail)}${r.mine?` · <button class="link" data-limits="${spot.id}">adjust your limits</button>`:""}</p>` : (r.score>=7? `<p class="hold"><b>Nothing holding it back.</b> ${r.window}-hour window at ${Math.round(r.spd)} kn.</p>`:"");
   const dis= r.dis? `<p class="hold warn"><b>Station disagrees:</b> ${esc(r.dis.o.name)} (${r.dis.o.dist_mi} mi) reads ${Math.round(r.dis.o.spd)} kn ${compass(r.dis.o.dir)} while the model says ${Math.round(r.dis.fc)} kn for this hour. Today's score uses the station.</p>`:"";
   const cam=CAMS[spot.id]; 
   const plan=`Heading to ${spot.name} ${dayLabel(selDay)[0]} ${hhmm(r.from)}–${hhmm(r.to)}, ${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)}. Directions: ${mapsUrl(spot)}`;
-  return `${svg}<div class="kv">${kv.map(([k,v])=>`<div><b>${k}</b><span>${v}</span></div>`).join("")}</div>${hold}${dis}
+  return `${svg}<div class="kv">${kv.map(([k,v,c])=>`<div${c?` class="${c}"`:""}><b>${k}</b><span>${v}</span></div>`).join("")}</div>${hold}${dis}
     <p>${esc(spot.notes)}</p><p><b>Parking:</b> ${esc(spot.parking)}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
     ${Object.keys(ov).length? `<p class="hold"><b>Your limits here:</b> ${Object.entries(ov).map(([k,v])=>`${k} ${v}`).join(", ")} · <button class="link" data-limits="${spot.id}">edit</button></p>`:""}
     <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}</div>`;
@@ -722,8 +750,18 @@ async function fetchForecasts(){
   }catch(e){ console.warn("marine failed",e); }
   return {docs:Object.values(docs), fetchedAt:now};
 }
+async function fetchObsFile(){
+  // obs.json is written hourly by .github/workflows/observations.yml (NWS stations + NDBC buoys, which have no CORS).
+  // Same origin, so it works on GitHub Pages; readings carry their own timestamp and age honestly between runs.
+  const d=await fetchJSON("obs.json?t="+Math.floor(Date.now()/300000), 15000);
+  return d&&d.obs? d.obs : {};
+}
+function applyObs(o){
+  obsData=mergeObs(obsData,o); render();
+  try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); c.obs=obsData; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){}
+}
 async function fetchStations(){
-  // NWS/METAR observations, nearest two per spot, fetched in parallel; buoys need a server (no CORS) and are a follow-up.
+  // NWS/METAR observations, nearest two per spot, fetched directly in parallel so the page still has readings if the hourly job is late.
   const ids=[...new Set(Object.values(NWS_STATIONS).flat().map(x=>x.id))];
   const nowMs=Date.now(); const readings={};
   await Promise.all(ids.map(async id=>{ try{ const d=(await fetchJSON(`https://api.weather.gov/stations/${id}/observations/latest`,15000)).properties;
@@ -739,7 +777,9 @@ async function refreshAll(manual){
     lastFetchedAt=fetchedAt; ingest(docs,fetchedAt);
     try{localStorage.setItem("goc.cache",JSON.stringify({docs,fetchedAt,obs:obsData}))}catch(e){}
     setRefreshUI("idle", manual?"Forecast updated.":"");
-    fetchStations().then(o=>{ obsData=o; render(); try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); c.obs=o; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} }).catch(()=>{});
+    // Station readings never hold up the scores: both sources merge in as they arrive, fresher reading per station wins.
+    fetchObsFile().then(applyObs).catch(e=>console.warn("obs.json unavailable",e));
+    fetchStations().then(applyObs).catch(()=>{});
   }catch(e){
     console.warn(e); setRefreshUI("idle", Object.keys(forecasts).length? "Couldn't reach the forecast service; showing the last one." : "Couldn't reach the forecast service. Check your connection and tap Refresh.");
     if(!Object.keys(forecasts).length) ingest([]);

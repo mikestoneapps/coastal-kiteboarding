@@ -1,0 +1,45 @@
+name: Station observations
+
+# Fetch the latest NWS and NDBC readings for every spot into obs.json and commit it so the page
+# can read buoys (no CORS) same-origin. Hourly 05:00–21:00 Pacific on main; cron is UTC, so the window
+# below covers both PDT (12–04 UTC) and PST (13–05 UTC) with one extra run at each edge.
+on:
+  schedule:
+    - cron: "7 12-23,0-5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: observations
+  cancel-in-progress: false
+
+jobs:
+  observations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch observations
+        run: python3 obs_standalone.py obs.json
+
+      - name: Commit obs.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add obs.json
+          if git diff --cached --quiet; then
+            echo "obs.json unchanged"
+            exit 0
+          fi
+          git commit -m "Update station observations"
+          # Scheduled runs are on main; a manual run commits to the branch it was started from.
+          # Another run or a merge may have landed meanwhile, so rebase once before pushing.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
