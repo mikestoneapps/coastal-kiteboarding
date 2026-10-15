@@ -16,6 +16,8 @@ Goal: "Wind measured now" works for all 15 spots, including the buoy-only ones, 
 
 Prompt: *"Read CLAUDE.md and SPEC.md. Implement Phase 1 of docs/BUILD-PLAN.md: an hourly GitHub Actions workflow that runs obs_standalone.py and commits obs.json, and make index.html read obs.json alongside its direct NWS fetches. Run the script once locally to generate a first obs.json and commit it. Test the page in a headless browser before opening the PR."*
 
+Status (2026-10-15): built. `obs.json` was committed empty because the build container's network policy blocks api.weather.gov and ndbc.noaa.gov; the first run of the **Station observations** workflow on `main` (hourly, or Actions → Run workflow) fills it. Until then the page behaves exactly as before, on its direct NWS calls. A reading's age is computed from its own timestamp, so a late job shows "3h ago" greyed rather than a frozen "12 min ago".
+
 ## Phase 2 — Settings that follow him, and "Keep this spot"
 Goal: rider profile, comfort limits, per-spot overrides, checklist edits and alert settings persist across devices.
 - Smallest honest option: a tiny backend (Cloudflare Worker + KV, or Supabase free tier) with magic-link email login. No passwords.
