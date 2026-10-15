@@ -37,6 +37,9 @@ Goal: SPEC §5. When outside the home region, discover spots within the drive ra
 ## Phase 5 — Polish
 Forecast accuracy memory and per-spot bias (SPEC "Add soon after" #7), seasonal context, two-spot compare, post-session feedback, native iOS wrapper for a home-screen widget if push proves unreliable.
 
+## Small fixes queued (do in any phase)
+- Drive-radius slider stops at 4 h; Floras Lake is 5 h from Lake Oswego. Extend the slider to 6 h (step 15 min), or always surface a spot scoring 8+ regardless of radius. Noted 2026-10-15 after Phase 1 verification.
+
 ## Open questions (for the rider, after the surprise)
 - Which spots he actually rides; their real launch rules and parking.
 - His weight and quiver (defaults: 185 lb; 7/9/12/14 m).
