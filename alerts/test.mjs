@@ -55,7 +55,7 @@ const varied = (d, h) => ({ spd: 8 + ((h * 7 + d.charCodeAt(9) * 3) % 30), gst: 
   const rider = (alerts = {}, state = {}, extra = {}) => ({ id: "r1", settings: { style: "freeride", alerts: { ...DEFAULT_ALERTS, ...alerts }, ...extra }, state });
 
   let r = evaluate(rider({ sameDay: false }), F, sat);
-  assert(r.notification && /Tomorrow looks great from Lake Oswego/.test(r.notification.body) && /from Bay City/.test(r.notification.body), "19:00: tomorrow's digest for both houses: " + r.notification.body);
+  assert(r.notification && /Tomorrow looks great from Lake Oswego/.test(r.notification.body) && /from Pacific City/.test(r.notification.body), "19:00: tomorrow's digest for both houses: " + r.notification.body);
   assert(r.notification.url === "./#day=2026-10-18" && Object.keys(r.state.alerted).every(k => k.endsWith("|2026-10-18") || k.endsWith("|2026-10-19") || k.endsWith("|2026-10-20")) && r.state.sent["2026-10-17"] === 1, "deep link to the first day; every qualifying spot-day recorded; daily count 1");
   const keys = Object.keys(r.state.alerted).length;
   assert(keys > 3, `records all ${keys} qualifying spot-days, not only the three named`);

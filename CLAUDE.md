@@ -3,7 +3,7 @@
 Read `SPEC.md` before any work. It is the product spec and the source of truth for scope and scoring. `docs/BUILD-PLAN.md` is the phased plan; work one phase at a time.
 
 ## What this is
-A kiteboarding spot-finder for one rider in Portland, OR (gift for his 50th). The app, tab and home-screen name is **"Bistué Boarding"** (manifest + title); the repo and URL stay `coastal-kiteboarding`. One screen: spots ranked by a 0–10 score for the selected day, with drive time from his two houses (Lake Oswego, Bay City) or his current location.
+A kiteboarding spot-finder for one rider in Portland, OR (gift for his 50th). The app, tab and home-screen name is **"Bistué Boarding"** (manifest + title); the repo and URL stay `coastal-kiteboarding`. One screen: spots ranked by a 0–10 score for the selected day, with drive time from his two houses (Lake Oswego and Pacific City on the coast; the coast house moved from Bay City in Oct 2026 and keeps the internal key `BC`/`driveBC` so saved settings still work) or his current location.
 
 ## Hard rules
 - **`index.html` is live at https://mikestoneapps.github.io/coastal-kiteboarding/ and installed on a phone. It must keep working after every change.** Never break the GitHub Pages deploy (branch `main`, root folder). Test the page in a browser before committing; never commit a page that throws on load.

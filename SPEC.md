@@ -1,6 +1,6 @@
 # Coastal Kiteboarding ("Bistué Boarding") — product spec
 
-App name: Coastal Kiteboarding; the heading inside the app reads "Bistué Boarding". A kiteboarding spot-finder built as a 50th-birthday gift for a Portland rider with a second house in Bay City, OR. One question, answered in one screen: **where should I go, today or in the next few days, and is it worth the drive?**
+App name: Coastal Kiteboarding; the heading inside the app reads "Bistué Boarding". A kiteboarding spot-finder built as a 50th-birthday gift for a Portland rider with a second house in Pacific City, OR. One question, answered in one screen: **where should I go, today or in the next few days, and is it worth the drive?**
 
 Prototype (claude.ai artifact, Oct 2026) validated the scoring model, spot list, checklist and layout. **A standalone version is live on GitHub Pages at https://mikestoneapps.github.io/coastal-kiteboarding/** (`index.html` in this folder; it fetches Open-Meteo and NWS stations directly in the browser, installs to the home screen via `manifest.webmanifest`, and must keep working throughout the build). This spec is the handoff to the production build.
 
@@ -12,7 +12,7 @@ Files here: `index.html` (live site), `scoring.js` (scoring model, drop-in), `sp
 
 ## 1. Users and jobs
 
-- **Primary user:** one experienced rider, ~50, iPhone, based in Lake Oswego with a coast house in Bay City. Rides the Columbia Gorge and the north/central Oregon coast. Travels.
+- **Primary user:** one experienced rider, ~50, iPhone, based in Lake Oswego with a coast house in Pacific City. Rides the Columbia Gorge and the north/central Oregon coast. Travels.
 - **Job 1 — Today:** "I have the afternoon. Where's the best session within my drive radius right now?"
 - **Job 2 — Planning:** "Next 3–5 days, which day and which spot look best? How confident is the forecast?"
 - **Job 3 — Alerts:** "Tell me when somewhere nearby is going to be great so I can clear my calendar."
@@ -25,7 +25,7 @@ Non-goals: session tracking / jump stats (Surfr, Hoolan own that), social featur
 ### 2.1 Home (the only screen that matters)
 Top to bottom:
 1. **Header** — app name, "Forecast 40 min ago" freshness stamp (flags >6 h as stale), **Refresh now** button.
-2. **Home base selector** — segmented: *Lake Oswego · Bay City · Elsewhere*. Elsewhere = current GPS location (ask permission) or a typed place; drive times and directions origin follow it.
+2. **Home base selector** — segmented: *Lake Oswego · Pacific City · Elsewhere*. Elsewhere = current GPS location (ask permission) or a typed place; drive times and directions origin follow it.
 3. **Day tabs** — Today, Tomorrow, then weekday names, five days.
 4. **Best bet card** — the top-scoring spot within radius for the selected day: photo, score, name, wind summary (`18g24 NW`), best window (`2p–5p`), drive time, suggested kite size. If nothing scores ≥4 in radius: "Nothing worth the drive," and if something scores ≥4 beyond radius, say so with its drive time.
 5. **Controls** — riding style (*Freeride · Wave · Foil*), drive-radius slider (30 min–4 h, default 1h30 Today / 3 h planning).
@@ -73,7 +73,7 @@ dir: { best:[[from,to]…], work:[…], off:[…] }   // compass sectors, degree
 waves: bool                         // pull marine forecast?
 pass: bool                          // Oregon State Parks pass needed
 notes                               // launch rules, hazards, local knowledge
-driveLO, driveBC                    // typical minutes from each home base (curated)
+driveLO, driveBC                    // typical minutes from each home base (curated; BC = the coast house, Pacific City since Oct 2026, key kept so saved settings still work)
 photo: optional                     // see §6
 ```
 

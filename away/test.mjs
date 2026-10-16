@@ -19,7 +19,7 @@ const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
 const a = html.indexOf("/* ---------- kept spots ---------- */"), b = html.indexOf("/* ---------- settings sync");
 assert(a > 0 && b > a && html.slice(a, b).includes("/* ---------- away from home (SPEC §5) ---------- */"), "found the page's kept-spots + away block");
 const hav = html.match(/function haversineMi\(.*\n/)[0];
-const HOMES = { LO: { name: "Lake Oswego", lat: 45.4207, lon: -122.6706, key: "driveLO" }, BC: { name: "Bay City", lat: 45.5229, lon: -123.8893, key: "driveBC" } };
+const HOMES = { LO: { name: "Lake Oswego", lat: 45.4207, lon: -122.6706, key: "driveLO" }, BC: { name: "Pacific City", lat: 45.2020, lon: -123.9627, key: "driveBC" } };
 function sandbox(net = {}) {
   const store = {};
   const S = {
@@ -128,6 +128,24 @@ function sandbox(net = {}) {
   const p = S.pickCommonsPhoto(F.COMMONS);
   assert(p && p.url.endsWith("kites.jpg") && p.credit === "Sandy Cove kites.jpg: Jane Doe (CC BY 2.0)", "Commons: first landscape, free-licensed image, credit without HTML");
   assert(S.pickCommonsPhoto({}) === null, "no Commons hits -> null");
+  // photo relevance: keywords in the title and categories decide; ties go to the 3:2 frame, then the bigger image; nothing positive -> no photo
+  const ks = S.photoKeywordScore;
+  assert(ks("Kitesurfing at Windansea") === 1 && ks("Windsurfing off the jetties") === 2 && ks("Bayocean Spit shoreline") === 2 && ks("Beaches of San Diego County") === 1 && ks("Playa del Carmen waterfront") === 2, "positive words count once per word; plurals and compounds (kitesurfing, windsurfing, jetties, shoreline, bayocean, waterfront) included");
+  assert(ks("Season ticket, Carlsbad, maple, research, design, surface, plateau, Pierre") === 0, "no false hits on season / Carlsbad / maple / research / design / surface / plateau / Pierre");
+  assert(ks("Seagull on a car") === -1 && ks("Road signs in California") === -1 && ks("Beach parking sign") === 0 && ks("Seabirds at Ocean Beach") === 1 && ks("Churches in Pacific City") === -1, "negative words subtract; a seabird is a bird, not a sea");
+  const pages = F.COMMONS_SCORED.query.pages, only = (...ids) => ({ query: { pages: Object.fromEntries(Object.entries(pages).filter(([k]) => ids.includes(k))) } }), without = (...ids) => only(...Object.keys(pages).filter(k => !ids.includes(k)));
+  const P = S.pickCommonsPhoto(F.COMMONS_SCORED);
+  assert(P && P.url.endsWith("ocean-beach-pier-at-sunset.jpg") && P.credit === "Ocean Beach pier at sunset.jpg: Jane Doe (CC BY 2.0)" && /File:Ocean_Beach_pier/.test(P.page), "the most beach-like candidate wins over the nearest one (a rose), a sign and a map");
+  assert(S.pickCommonsPhoto(without("3")).url.endsWith("boardwalk-big.jpg"), "same keywords and shape: the bigger image wins");
+  assert(S.pickCommonsPhoto(without("3", "5")).url.endsWith("mission-beach-boardwalk.jpg"), "same keywords: the 3:2 frame beats the panorama");
+  assert(S.pickCommonsPhoto(only("1", "6", "7")) === null, "a flower, a map and a sign (0 or below): no photo, the neutral tile stays");
+  assert(S.pickCommonsPhoto(only("8")) === null && S.pickCommonsPhoto(only("9")) === null, "a keyworded portrait and an unfree image are still skipped");
+  assert(S.pickCommonsPhoto(only("10")).url.endsWith("lifeguards.jpg"), "no categories at all: the title alone can carry it");
+}
+{
+  let seen = ""; const S = sandbox({ fetch: async url => { seen = String(url); return F.COMMONS_SCORED; } });
+  const p = await S.commonsPhoto(32.77, -117.25);
+  assert(p && p.url.endsWith("ocean-beach-pier-at-sunset.jpg") && /ggscoord=32\.77\|-117\.25/.test(seen) && /ggsradius=1500/.test(seen) && /ggslimit=20/.test(seen) && /prop=imageinfo\|categories/.test(seen) && /clshow=!hidden/.test(seen) && /iiurlwidth=640/.test(seen), "commonsPhoto asks for 20 candidates within 1.5 km with their non-hidden categories: " + seen.slice(0, 120));
 }
 
 /* ---------- 5. discover(): found / empty / missing / error, forecasts merged, cache ---------- */
