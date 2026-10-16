@@ -71,9 +71,11 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .radius output{font:500 13px var(--mono);min-width:5ch;text-align:right}
 .list{display:flex;flex-direction:column;gap:8px}
 .row{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.row>button.head{all:unset;display:grid;grid-template-columns:112px 1fr auto;gap:12px;align-items:center;width:100%;padding:0 12px 0 0;cursor:pointer;box-sizing:border-box}
-.pic{position:relative;width:112px;height:76px;overflow:hidden;background:var(--surface2)}
-.pic img{width:100%;height:100%;object-fit:cover;display:block}
+.row>button.head{all:unset;display:grid;grid-template-columns:112px 1fr auto;gap:12px;align-items:stretch;width:100%;min-height:76px;padding:0 12px 0 0;cursor:pointer;box-sizing:border-box}
+.row>button.head>.body{min-width:0;display:flex;flex-direction:column;justify-content:center;padding:10px 0}   /* the chip row keeps clearance from the tile's bottom edge however the name or conditions wrap */
+.row>button.head>.drive{align-self:center}
+.pic{position:relative;width:112px;min-height:76px;overflow:hidden;background:var(--surface2)}   /* stretches to the tile's height */
+.pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .pic.nophoto,.hpic.nophoto{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--surface2),var(--line))}
 .pic.nophoto svg,.hpic.nophoto svg{width:40%;height:40%;color:var(--muted);opacity:.7}
 .pic.nophoto .score{left:6px;bottom:6px}
@@ -102,6 +104,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:24px;text-align:center;color:var(--muted)}
 .beyond{margin-top:14px;color:var(--muted);font-size:14px}
 .beyond button{all:unset;color:var(--accent);cursor:pointer;font-weight:600}
+.addspot{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .away{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:14px;line-height:1.35}
 .away .lbl{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
 .away .actions{margin-top:8px}
@@ -126,7 +129,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .kites button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:transparent}
 .how p{font-size:14px;margin:0 0 8px}
 .how ol{padding-left:18px;margin:0 0 8px;font-size:14px}
-@media (max-width:480px){.row>button.head{grid-template-columns:96px 1fr auto;gap:8px}.pic{width:96px;height:72px}.pic .score{font-size:15px}.row .name{font-size:16px}.drive{font-size:16px}.hero .big{font-size:34px}}
+@media (max-width:480px){.row>button.head{grid-template-columns:96px 1fr auto;gap:8px;min-height:72px}.pic{width:96px;min-height:72px}.pic .score{font-size:15px}.row .name{font-size:16px}.drive{font-size:16px}.hero .big{font-size:34px}}
 @media (prefers-reduced-motion:no-preference){.detail{animation:fade .18s ease-out}@keyframes fade{from{opacity:.4}}}
 </style>
 </head>
@@ -170,7 +173,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 
   <div class="list" id="list"></div>
   <div class="beyond" id="beyond"></div>
-  <div class="beyond"><button id="openKeep">Add a spot</button></div>
+  <div class="addspot"><button class="btn" id="openKeep">Look up a new spot</button><button class="btn" id="openHere">This spot is killer</button></div>
 </div>
 
 <div class="dock">
@@ -181,6 +184,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 </div>
 
 <div id="sheetHost"></div>
+<input type="file" id="photoFile" accept="image/*" hidden>
 
 <script>
 const SPOTS = /*SPOTS*/[{"id":"stevenson","name":"Stevenson","region":"Gorge","lat":45.695,"lon":-121.885,"driveLO":65,"driveBC":185,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. Bob's Beach launch; flat-ish river, good warm-up for the Gorge.","parking":"Bob's Beach lot off Cascade Ave, Stevenson WA","plat":45.6943,"plon":-121.8852},{"id":"hoodriver","name":"Hood River Sandbar","region":"Gorge","lat":45.716,"lon":-121.515,"driveLO":75,"driveBC":215,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. 14\u201325 mph typical, 25\u201335+ when it's on. Sandbar is managed by the Columbia Gorge Kiteboarding Assoc.","parking":"Hood River Event Site / Sandbar lot (Port of Hood River, day fee)","plat":45.7159,"plon":-121.5141},{"id":"rufus","name":"Rufus (Rock Pile)","region":"Gorge","lat":45.692,"lon":-120.733,"driveLO":120,"driveBC":275,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"East Gorge, west wind only. 12\u201350 mph depending on the pattern; often blowing when Hood River is light.","parking":"Rufus launch, Old Hwy 30 / I-84 exit 109","plat":45.6933,"plon":-120.7315},{"id":"fortstevens","name":"Fort Stevens / Clatsop Spit","region":"North Coast","lat":46.19,"lon":-123.98,"driveLO":125,"driveBC":120,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Northernmost coast spot, big open beach. Good for downwinders; watch the Columbia bar current.","parking":"Fort Stevens State Park, Parking Lot C (day-use fee or OR State Parks pass)","plat":46.2015,"plon":-123.9814},{"id":"gearhart","name":"Gearhart","region":"North Coast","lat":46.03,"lon":-123.93,"driveLO":110,"driveBC":100,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Summer NW thermal starts ~2pm, 15\u201330 mph. Drive-on beach; cars on the sand are the hazard.","parking":"Gearhart beach access at end of 10th St (drive on sand)","plat":46.0268,"plon":-123.9262},{"id":"manzanita","name":"Manzanita / Nehalem Bay","region":"North Coast","lat":45.72,"lon":-123.94,"driveLO":105,"driveBC":60,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Windiest spot on the north coast; usually blows ~10 mph stronger than nearby beaches. Bring the small kite.","parking":"Nehalem Bay State Park day-use lot (OR State Parks pass)","plat":45.6985,"plon":-123.9315},{"id":"rockaway","name":"Rockaway Beach","region":"North Coast","lat":45.613,"lon":-123.95,"driveLO":100,"driveBC":50,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long straight beach, easy access from 101. Lighter than Manzanita on the same day.","parking":"Rockaway Beach wayside lot, S 1st Ave","plat":45.6135,"plon":-123.9448},{"id":"bayocean","name":"Bayocean Spit","region":"Tillamook Bay","lat":45.53,"lon":-123.95,"driveLO":100,"driveBC":40,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"North of the Pacific City house, on the Tillamook Bay spit. Ocean beach on the outside; the bay side flattens out at lower tide.","parking":"Bayocean Peninsula trailhead lot, Bayocean Rd","plat":45.5263,"plon":-123.9469},{"id":"oceanside","name":"Oceanside","region":"Tillamook Bay","lat":45.46,"lon":-123.97,"driveLO":105,"driveBC":30,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Under the cliffs, quiet. On a good swell day it's one of the best wave spots on the north coast.","parking":"Oceanside Beach State Recreation Site lot, Pacific Ave","plat":45.4603,"plon":-123.9693},{"id":"capelookout","name":"Cape Lookout","region":"Tillamook Bay","lat":45.36,"lon":-123.97,"driveLO":115,"driveBC":20,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long beach north of the cape; the headland shelters S wind and accelerates N wind.","parking":"Cape Lookout State Park day-use lot (OR State Parks pass)","plat":45.3614,"plon":-123.9707},{"id":"pacificcity","name":"Pacific City","region":"Central Coast","lat":45.2,"lon":-123.97,"driveLO":110,"driveBC":5,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Cape Kiwanda bends the N wind; launch well south of the dory boats and surfers.","parking":"Cape Kiwanda lot (paid) or Bob Straub State Park lot to the south","plat":45.2155,"plon":-123.9709},{"id":"roadsend","name":"Roads End, Lincoln City","region":"Central Coast","lat":45.01,"lon":-124.01,"driveLO":115,"driveBC":25,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long stretch of beach at the north end of town, away from the crowds.","parking":"Roads End State Recreation Site lot, Logan Rd","plat":45.0083,"plon":-124.0107},{"id":"newport","name":"Newport South Jetty","region":"Central Coast","lat":44.61,"lon":-124.07,"driveLO":150,"driveBC":70,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Some of the best down-the-line wave riding on the coast when NW wind meets NW swell.","parking":"South Jetty lot, SW Jetty Way (South Beach State Park)","plat":44.6103,"plon":-124.071},{"id":"florence","name":"Florence South Jetty","region":"Central Coast","lat":44.01,"lon":-124.13,"driveLO":180,"driveBC":140,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"N wind: ride the south jetty. S wind (winter, gustier): ride the north jetty. Can hit 40+; go early on big days.","parking":"South Jetty Rd beach lot, Oregon Dunes NRA (day fee)","plat":44.012,"plon":-124.131},{"id":"floras","name":"Floras Lake","region":"South Coast","lat":42.9,"lon":-124.5,"driveLO":300,"driveBC":280,"waves":false,"pass":false,"dir":{"work":[[170,360],[0,60]],"best":[[300,360],[0,30]],"off":[[90,160]]},"notes":"Freshwater lake behind the dunes, steady N wind, waist-deep launch. Worth the drive when it's nuking everywhere else. 8\u201310m kites typical.","parking":"Boice Cope County Park, Floras Lake Loop Rd","plat":42.9008,"plon":-124.5035}];
@@ -213,8 +217,8 @@ const GLYPH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 
 const DEFAULT_COMFORT={minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3, stretch:true};
 const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true};
-let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], updatedAt:null, v:2};
-try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[]}; }catch(e){}
+let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], photos:{}, updatedAt:null, v:2};
+try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], photos:(s.photos&&typeof s.photos==="object")?s.photos:{}}; }catch(e){}
 function allSpots(){ const extra=settings.kept.concat(awaySpots()); return extra.length? SPOTS.concat(extra) : SPOTS; }   // awaySpots() is [] unless away from home (Phase 4)
 function limitsFor(spotId){ return {...settings.comfort, ...(settings.overrides[spotId]||{})}; }
 const CAMS={pacificcity:{name:"Pacific City surf cam",url:"https://www.surf-forecast.com/breaks/Pacific-City_Gas-Chambers/webcams/latest",mi:0.6},
@@ -469,7 +473,7 @@ function render(){
   const top=[...within].sort((a,b)=> b.r.score-a.r.score || a.drive-b.drive)[0];
   if(!all.length){ hero.innerHTML=""; }
   else if(top && top.r.score>=4){
-    hero.innerHTML=`<div class="hero"><div class="hpic${top.spot.photo===false&&!top.spot.photoUrl?" nophoto":""}">${picHTML(top.spot)}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${Math.round(top.r.spd)}g${Math.round(top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
+    hero.innerHTML=`<div class="hero"><div class="hpic${photoSrc(top.spot)?"":" nophoto"}" data-spot="${esc(top.spot.id)}">${picHTML(top.spot)}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${Math.round(top.r.spd)}g${Math.round(top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
   } else {
     const far=beyond.find(x=>x.r.score>=4);
     hero.innerHTML=`<div class="hero"><div class="hbody"><div class="big" style="color:var(--gate)">${top?top.r.score.toFixed(1):"–"}</div><div><div class="lbl">${dayLabel(selDay)[0]} within ${mins(settings.radius)}</div><div class="name">Nothing worth the drive</div><div class="meta">${far? `Further out: ${esc(far.spot.name)} scores ${far.r.score.toFixed(1)} at ${mins(far.drive)}.` : "No spot in the forecast scores above 4 today."}</div></div></div></div>`;
@@ -490,8 +494,8 @@ function row({spot,r,rt,drive}){
   const chips=[]; if(r.reason) chips.push(`<span class="chip ${c}">${esc(r.reason)}</span>`); if(r.agree&&selDay!==dayKeys[0]) chips.push(`<span class="chip">${r.agree}</span>`); if(r.dis) chips.push(`<span class="chip ok">${esc(r.dis.text)}</span>`);
   if(settings.sort==="tomorrow"&&rt) chips.push(`<span class="chip ${cls(rt.score)}">Tomorrow ${rt.score.toFixed(1)}</span>`);
   return `<div class="row" id="row-${spot.id}"><button class="head" aria-expanded="${openSpot===spot.id}" data-open="${spot.id}">
-    <div class="pic${spot.photo===false&&!spot.photoUrl?" nophoto":""}">${picHTML(spot)}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
-    <div style="min-width:0"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}${spot.auto?" · auto":""}</span></div>
+    <div class="pic${photoSrc(spot)?"":" nophoto"}">${picHTML(spot)}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
+    <div class="body"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}${spot.auto?" · auto":""}</span></div>
       <div class="wind">${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)} · ${hhmm(r.from)}–${hhmm(r.to)}${r.wh!=null?` · ${r.wh.toFixed(0)}ft`:""} ${chips.join(" ")}</div></div>
     <div class="drive">${mins(drive)}<small>${drive>settings.radius?"beyond":(settings.home==="X"||spot.kept||spot.auto?"est.":"drive")}</small></div></button>
     <div id="detail-${spot.id}"${openSpot===spot.id?"":" hidden"}>${openSpot===spot.id?detail({spot,r,drive}):""}</div></div>`;
@@ -537,9 +541,9 @@ function detail({spot,r,f}){
   return `${svg}<div class="kv">${kv.map(([k,v,c])=>`<div${c?` class="${c}"`:""}><b>${k}</b><span>${v}</span></div>`).join("")}</div>${hold}${dis}
     ${spot.notes?`<p>${esc(spot.notes)}</p>`:""}<p><b>Parking:</b> ${esc(spot.parking||(spot.kept||spot.auto?"not noted":""))}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
     ${Object.keys(ov).length? `<p class="hold"><b>Your limits here:</b> ${Object.entries(ov).map(([k,v])=>`${k} ${v}`).join(", ")} · <button class="link" data-limits="${spot.id}">edit</button></p>`:""}
-    <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}${spot.kept?`<button class="btn" data-unkeep="${spot.id}">Remove this spot</button>`:""}${spot.auto?`<button class="btn" data-keep="${spot.id}">Keep this spot</button>`:""}</div>
-    ${spot.auto?`<p class="hold" style="margin-top:8px"><b>Auto</b> · found on OpenStreetMap (${esc((spot.kind||"spot").toLowerCase())}${spot.osm?`, <a href="https://www.openstreetmap.org/${{n:"node",w:"way",r:"relation"}[spot.osm[0]]}/${spot.osm.slice(1)}" target="_blank" rel="noopener">map</a>`:""}) · ${spot.facing!=null?`faces ${compass(spot.facing)}, read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"}; direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"shoreline direction unknown, so wind direction isn't scored here; Keep it and pick which way it faces"} · drive time is a road-distance estimate${spot.waves?"":" · inland water, no surf forecast"}.${spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}
-    ${spot.kept?`<p class="hold" style="margin-top:8px"><b>Kept spot</b> · ${spot.facing!=null?`faces ${compass(spot.facing)}${spot.facingSrc?` (read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"})`:""} · direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"facing unknown, so wind direction isn't scored here"} · drive times are road-distance estimates${spot.osm?" · from OpenStreetMap":""}. Saved ${new Date(spot.addedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}${syncState.key?", synced":""}.${spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}`;
+    <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}${spot.kept?`<button class="btn" data-unkeep="${spot.id}">Remove this spot</button>`:""}${spot.auto?`<button class="btn" data-keep="${spot.id}">Keep this spot</button>`:""}<button class="btn" data-photo="${spot.id}">Use my photo</button>${riderPhotos[spot.id]?`<button class="btn" data-unphoto="${spot.id}">Remove photo</button>`:""}</div>
+    ${spot.auto?`<p class="hold" style="margin-top:8px"><b>Auto</b> · found on OpenStreetMap (${esc((spot.kind||"spot").toLowerCase())}${spot.osm?`, <a href="https://www.openstreetmap.org/${{n:"node",w:"way",r:"relation"}[spot.osm[0]]}/${spot.osm.slice(1)}" target="_blank" rel="noopener">map</a>`:""}) · ${spot.facing!=null?`faces ${compass(spot.facing)}, read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"}; direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"shoreline direction unknown, so wind direction isn't scored here; Keep it and pick which way it faces"} · drive time is a road-distance estimate${spot.waves?"":" · inland water, no surf forecast"}.${riderPhotos[spot.id]?" Photo: yours.":spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}
+    ${spot.kept?`<p class="hold" style="margin-top:8px"><b>Kept spot</b> · ${spot.facing!=null?`faces ${compass(spot.facing)}${spot.facingSrc?` (read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"})`:""} · direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"facing unknown, so wind direction isn't scored here"} · drive times are road-distance estimates${spot.osm?" · from OpenStreetMap":""}. Saved ${new Date(spot.addedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}${syncState.key?", synced":""}.${riderPhotos[spot.id]?" Photo: yours.":spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}`;
 }
 
 /* ---------- sheets ---------- */
@@ -601,13 +605,14 @@ function keepSheet(pre){
   // "Add a spot" (nobody needs to know coordinates): find the place by name (Nominatim, the same geocoder as Elsewhere) or use the
   // phone's location for a beach that isn't on any map; the coordinates show read-only with a Check-on-map link and an Edit fallback.
   // Also opened prefilled (pre.carry) for a discovered spot whose facing couldn't be read off the shoreline: then it is "Keep this spot".
+  // "This spot is killer" (pre.here): the same sheet, but the coordinates come from the phone's location straight away and the cursor lands in the name field.
   pre=pre||{};
-  const keep=!!pre.carry, has=pre.lat!=null&&pre.lon!=null;
+  const keep=!!pre.carry, here=!!pre.here, has=pre.lat!=null&&pre.lon!=null;
   const inp=extra=>`style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);${extra||""}"`;
-  sheet(keep?"Keep this spot":"Add a spot", `<p style="font-size:13px;color:var(--muted);margin:0 0 6px">${keep? "Which way does the beach face? That is all it still needs. It keeps its forecast and score and stays in your list" : "A beach that isn't in the list. Find it by name, or stand on it and use your location, then say which way the beach faces. It gets a forecast and a score like the others, drive times from both houses, and stays in your list"}${syncState.key?" on every linked device":""}.</p>
-    ${keep?"":`<div class="field"><label for="ksq">Find the place</label><div style="display:flex;gap:6px;max-width:420px"><input type="search" id="ksq" placeholder="Mission Bay · Hatteras · Floras Lake" ${inp("flex:1;min-width:0")}><button class="btn" id="ksFind">Find</button></div><div class="kites" id="ksHits" style="margin-top:6px"></div><p id="ksNote" style="color:var(--muted);font-size:13px;margin:4px 0 0">Or, for a beach that isn't on any map, stand on it:</p><div class="actions" style="margin-top:6px"><button class="btn" id="ksGPS">Use my location</button></div></div>`}
+  sheet(here?"This spot is killer":keep?"Keep this spot":"Add a spot", `<p style="font-size:13px;color:var(--muted);margin:0 0 6px">${keep? "Which way does the beach face? That is all it still needs. It keeps its forecast and score and stays in your list" : here? "You're standing on it: your phone's location fills in below. Give it a name and say which way the beach faces. It gets a forecast and a score like the others, drive times from both houses, and stays in your list" : "A beach that isn't in the list. Find it by name, or stand on it and use your location, then say which way the beach faces. It gets a forecast and a score like the others, drive times from both houses, and stays in your list"}${syncState.key?" on every linked device":""}.</p>
+    ${keep?"":`<div class="field" id="ksFindBox"${here?" hidden":""}><label for="ksq">Find the place</label><div style="display:flex;gap:6px;max-width:420px"><input type="search" id="ksq" placeholder="Mission Bay · Hatteras · Floras Lake" ${inp("flex:1;min-width:0")}><button class="btn" id="ksFind">Find</button></div><div class="kites" id="ksHits" style="margin-top:6px"></div><p id="ksNote" style="color:var(--muted);font-size:13px;margin:4px 0 0">Or, for a beach that isn't on any map, stand on it:</p><div class="actions" style="margin-top:6px"><button class="btn" id="ksGPS">Use my location</button></div></div>`}
     <div class="field"><label for="ksname">Spot name</label><input type="text" id="ksname" placeholder="Mission Bay" value="${esc(pre.name||"")}" ${inp("max-width:320px")}></div>
-    <div class="field"><label for="ksll">Location</label><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><input type="text" id="ksll" readonly placeholder="not set yet" value="${has?pre.lat+", "+pre.lon:""}" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);width:230px;max-width:100%"><a class="link" id="ksMap" href="${has?mapPointUrl(pre.lat,pre.lon):"#"}" target="_blank" rel="noopener"${has?"":" hidden"}>Check on map</a><button class="link" id="ksEdit" type="button">Edit</button></div><p id="ksLLNote" style="color:var(--muted);font-size:12px;margin:2px 0 0">${keep?"From OpenStreetMap.":"Filled in by the place search or your location. Edit to type coordinates from Google Maps instead."}</p></div>
+    <div class="field"><label for="ksll">Location</label><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><input type="text" id="ksll" readonly placeholder="not set yet" value="${has?pre.lat+", "+pre.lon:""}" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);width:230px;max-width:100%"><a class="link" id="ksMap" href="${has?mapPointUrl(pre.lat,pre.lon):"#"}" target="_blank" rel="noopener"${has?"":" hidden"}>Check on map</a><button class="link" id="ksEdit" type="button">Edit</button></div><p id="ksLLNote" style="color:var(--muted);font-size:12px;margin:2px 0 0">${keep?"From OpenStreetMap.":here?"Getting your location…":"Filled in by the place search or your location. Edit to type coordinates from Google Maps instead."}</p></div>
     <div class="field"><label>Beach faces (toward the water)</label><div class="kites" id="ksface">${["N","NE","E","SE","S","SW","W","NW"].map((c,i)=>`<button data-deg="${i*45}" aria-pressed="${c==="W"}">${c}</button>`).join("")}</div></div>
     <ul class="check" style="margin:0"><li><input type="checkbox" id="kswaves" ${pre.waves===false?"":"checked"}><label for="kswaves">Ocean beach <small>(pull the surf forecast)</small></label></li></ul>
     <div class="actions" style="margin-top:8px"><button class="btn primary" id="ksKeep">${keep?"Keep this spot":"Add this spot"}</button></div>
@@ -625,8 +630,12 @@ function keepSheet(pre){
       hits.querySelectorAll("button").forEach(b=>b.onclick=()=>{ const p=ps[+b.dataset.i]; hits.querySelectorAll("button").forEach(o=>o.setAttribute("aria-pressed",o===b)); setLL(p.lat,p.lon); if(!nameIn.value.trim()) nameIn.value=p.name.split(",")[0].trim()||q; llNote.textContent="From the place search. Check on map to be sure it is the beach, not the town centre."; });
     }catch(e){ if(document.getElementById("ksNote")) note.textContent="Couldn't reach the place lookup. Use your location, or Edit and type coordinates."; } };
   const fb=document.getElementById("ksFind"); if(fb){ fb.onclick=find; document.getElementById("ksq").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); find(); } }; }
-  const gps=document.getElementById("ksGPS"); if(gps) gps.onclick=()=>{ if(!navigator.geolocation){ gps.textContent="Location not available"; return; } gps.textContent="Locating…";
-    navigator.geolocation.getCurrentPosition(p=>{ setLL(+p.coords.latitude.toFixed(4),+p.coords.longitude.toFixed(4)); gps.textContent="Use my location"; llNote.textContent="Your location now. Check on map to be sure it is the beach, not the parking lot."; }, ()=>{ gps.textContent="Couldn't get location — allow it in Settings, or find the place by name"; }, {enableHighAccuracy:true,timeout:12000,maximumAge:60000}); };
+  const gps=document.getElementById("ksGPS");
+  const noFix=()=>{ if(gps) gps.textContent="Couldn't get location — allow it in Settings, or find the place by name"; if(here){ llNote.textContent="Couldn't get your location. Allow it in Settings and tap Use my location, or find the place by name."; const fb=document.getElementById("ksFindBox"); if(fb) fb.hidden=false; } };
+  const locate=()=>{ if(!navigator.geolocation){ if(gps) gps.textContent="Location not available"; noFix(); return; } if(gps) gps.textContent="Locating…";
+    navigator.geolocation.getCurrentPosition(p=>{ setLL(+p.coords.latitude.toFixed(4),+p.coords.longitude.toFixed(4)); if(gps) gps.textContent="Use my location"; llNote.textContent="Your location now. Check on map to be sure it is the beach, not the parking lot."; }, noFix, {enableHighAccuracy:true,timeout:12000,maximumAge:60000}); };
+  if(gps) gps.onclick=locate;
+  if(here){ locate(); nameIn.focus(); }
   document.getElementById("ksKeep").onclick=()=>{ const name=nameIn.value.trim(); const p=parseLL(ll.value);
     if(!name){ nameIn.focus(); return; }
     if(!p){ llNote.textContent="Find the place by name or use your location first (or Edit and type the coordinates)."; (document.getElementById("ksq")||ll).focus(); return; }   // a bad coordinate would fail the batched forecast call for every spot
@@ -825,11 +834,14 @@ document.getElementById("list").onclick=e=>{ const c=e.target.closest("[data-che
   const lm=e.target.closest("[data-limits]"); if(lm){limitsSheet(lm.dataset.limits);return;}
   const uk=e.target.closest("[data-unkeep]"); if(uk){ unkeepSpot(uk.dataset.unkeep); return; }
   const kp=e.target.closest("[data-keep]"); if(kp){ keepDiscovered(kp.dataset.keep); return; }
+  const ph=e.target.closest("[data-photo]"); if(ph){ pickRiderPhoto(ph.dataset.photo); return; }
+  const uph=e.target.closest("[data-unphoto]"); if(uph){ removeRiderPhoto(uph.dataset.unphoto); return; }
   const sh=e.target.closest("[data-share]"); if(sh){ const txt=sh.dataset.share; const done=()=>{sh.textContent="Copied — paste to a buddy"; setTimeout(()=>sh.textContent="Share plan",2500);};
     try{ navigator.clipboard.writeText(txt).then(done).catch(()=>{ const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy")}catch(_){} ta.remove(); done(); }); }catch(_){ done(); }
     return; } const b=e.target.closest("[data-open]"); if(!b) return; openSpot=openSpot===b.dataset.open?null:b.dataset.open; render(); if(openSpot){const el=document.getElementById("row-"+openSpot); el&&el.scrollIntoView({block:"nearest",behavior:"smooth"});} };
 document.getElementById("openCheck").onclick=()=>checklist(openSpot);
-document.getElementById("openKeep").onclick=keepSheet;
+document.getElementById("openKeep").onclick=()=>keepSheet();
+document.getElementById("openHere").onclick=()=>keepSheet({here:true});   // standing on it: coordinates from the phone, cursor in the name
 document.getElementById("openSettings").onclick=riderSheet;
 document.getElementById("openHow").onclick=howSheet;
 document.getElementById("openAlerts").onclick=alertsSheet;
@@ -840,14 +852,15 @@ function sectorsFromFacing(f){
   const n=d=>((d%360)+360)%360;
   return {best:[[n(f-30),n(f+30)]], work:[[n(f-80),n(f+80)]], off:[[n(f+130),n(f+230)]]};
 }
-function keepSpot({name,lat,lon,facing,waves,osm,kind,notes,photoUrl,photoCredit,cam,facingSrc,forecastFrom}){
+function keepSpot({name,lat,lon,facing,waves,osm,kind,notes,photoUrl,photoCredit,photoChecked,cam,facingSrc,forecastFrom}){
   // facing may be null (a discovered spot with no shoreline nearby): then every direction "works" and nothing gates, and the detail says so.
   const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,24)||"spot";
   let id="k-"+slug; while(allSpots().some(s=>s.id===id)) id="k-"+slug+"-"+Math.random().toString(36).slice(2,5);
   const est=h=>Math.round(haversineMi(h.lat,h.lon,lat,lon)*1.35/47*60/5)*5;
   const spot={id,name,region:"Kept",lat,lon,plat:lat,plon:lon,facing:facing==null?null:facing,dir:facing==null?UNKNOWN_DIR:sectorsFromFacing(facing),waves:!!waves,pass:false,photo:false,notes:notes||"",parking:"",driveLO:est(HOMES.LO),driveBC:est(HOMES.BC),kept:true,addedAt:new Date().toISOString()};
-  if(osm) spot.osm=osm; if(kind) spot.kind=kind; if(facingSrc) spot.facingSrc=facingSrc; if(photoUrl){ spot.photoUrl=photoUrl; spot.photoCredit=photoCredit||""; } if(cam) spot.cam=cam;
+  if(osm) spot.osm=osm; if(kind) spot.kind=kind; if(facingSrc) spot.facingSrc=facingSrc; if(photoUrl){ spot.photoUrl=photoUrl; spot.photoCredit=photoCredit||""; } if(photoChecked) spot.photoChecked=photoChecked; if(cam) spot.cam=cam;
   settings.kept.push(spot); saveSettings();
+  enrichKept([spot]);   // background Commons photo lookup, same scored picker as away mode; the score never waits for it
   if(forecastFrom&&forecasts[forecastFrom]){ forecasts[id]={...forecasts[forecastFrom],spotId:id}; cacheMerge({docs:Object.values(forecasts)}); }   // a discovered spot already has its forecast
   else refreshAll(false);   // pulls a forecast for the new spot; the list re-sorts once when it lands
   return spot;
@@ -855,6 +868,7 @@ function keepSpot({name,lat,lon,facing,waves,osm,kind,notes,photoUrl,photoCredit
 function unkeepSpot(id){
   settings.kept=settings.kept.filter(s=>s.id!==id); delete settings.overrides[id]; delete forecasts[id];
   if(openSpot===id) openSpot=null; saveSettings(); render();
+  if(riderPhotos[id]) removeRiderPhoto(id);   // his photo goes with the spot
 }
 
 /* ---------- away from home (SPEC §5) ---------- */
@@ -1094,6 +1108,16 @@ async function discover(key, mi, fresh){
   if(away.key!==key||away.status!=="scoring") return;
   away.status="done"; awayCacheSet(); render();
 }
+const keptLooking=new Set();   // kept-spot ids with a Commons lookup in flight
+function enrichKept(spots){
+  // Spots added at home get the same background Wikimedia Commons lookup as discovered ones: the scored picker, three at a
+  // time, nothing positive -> no photo and the tile keeps its glyph. Runs after the spot is saved and rendered; a lookup that
+  // fails (offline) is simply tried again next time the page opens, one that answers is remembered (photoChecked).
+  const queue=(spots||settings.kept||[]).filter(s=>s.lat!=null&&s.lon!=null&&!s.photoUrl&&!s.photoChecked&&!keptLooking.has(s.id));
+  queue.forEach(s=>keptLooking.add(s.id));
+  const worker=async()=>{ let s; while((s=queue.shift())){ try{ const p=await commonsPhoto(s.lat,s.lon); const live=settings.kept.find(k=>k.id===s.id)||s; live.photoChecked=new Date().toISOString(); if(p){ live.photoUrl=p.url; live.photoCredit=p.credit; patchPhoto(live); } saveSettings(); }catch(e){} finally{ keptLooking.delete(s.id); } } };
+  return Promise.all([worker(),worker(),worker()]);
+}
 async function enrichAway(key){
   // Background only, each lookup with a ENRICH_MS budget: direction rules from the shoreline (Overpass; the list re-sorts
   // once when they land, a failure leaves the spots "facing unknown"), then webcams from OSM, then photos from Wikimedia
@@ -1107,20 +1131,28 @@ async function enrichAway(key){
   await Promise.all([worker(),worker(),worker()]);
   if(away.key===key) awayCacheSet();
 }
+function photoSrc(spot){
+  // The rider's own photo first (IndexedDB, synced through the Worker), then the Commons/OSM one, then the built-in file for curated spots.
+  const mine=riderPhotos[spot.id]; if(mine) return mine.url;
+  if(spot.photoUrl) return spot.photoUrl;
+  return spot.photo===false? null : `img/${spot.id}.jpg`;
+}
 function picHTML(spot){
-  if(spot.photoUrl) return `<img src="${esc(spot.photoUrl)}" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`;
-  if(spot.photo===false) return GLYPH;
-  return `<img src="img/${spot.id}.jpg" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">`;
+  const src=photoSrc(spot);
+  return src? `<img src="${esc(src)}" alt="" loading="lazy" width="480" height="320" onerror="this.parentNode.classList.add('nophoto');this.outerHTML=GLYPH">` : GLYPH;
 }
 function patchPhoto(spot){
-  const pic=document.querySelector(`#row-${CSS.escape(spot.id)} .pic`); if(!pic) return;
-  const sc=pic.querySelector(".score"); pic.classList.remove("nophoto"); pic.innerHTML=picHTML(spot); if(sc) pic.appendChild(sc);
+  // Swap the photo into the tile (and the best-bet card) in place: never a re-sort for a photo.
+  const pic=document.querySelector(`#row-${CSS.escape(spot.id)} .pic`);
+  if(pic){ const sc=pic.querySelector(".score"); pic.classList.toggle("nophoto",!photoSrc(spot)); pic.innerHTML=picHTML(spot); if(sc) pic.appendChild(sc); }
+  const hp=document.querySelector(`#hero .hpic[data-spot="${CSS.escape(spot.id)}"]`);
+  if(hp){ hp.classList.toggle("nophoto",!photoSrc(spot)); hp.innerHTML=picHTML(spot); }
 }
 function pendingRow(spot){
   const drive=driveMins(spot)??999;
   return `<div class="row pending" id="row-${spot.id}"><button class="head" aria-expanded="false" disabled>
     <div class="pic nophoto">${picHTML(spot)}<div class="score gate">…</div></div>
-    <div style="min-width:0"><div class="name">${esc(spot.name)}<span>${esc(spot.region)} · auto</span></div><div class="wind">${away.note==="noforecast"?"no forecast yet":"scoring…"}</div></div>
+    <div class="body"><div class="name">${esc(spot.name)}<span>${esc(spot.region)} · auto</span></div><div class="wind">${away.note==="noforecast"?"no forecast yet":"scoring…"}</div></div>
     <div class="drive">${mins(drive)}<small>est.</small></div></button></div>`;
 }
 function awayBanner(){
@@ -1143,7 +1175,7 @@ function bindAway(){
 }
 function keepDiscovered(id){
   const s=away.spots.find(x=>x.id===id); if(!s) return;
-  const carry={osm:s.osm, kind:s.kind, notes:s.notes, photoUrl:s.photoUrl, photoCredit:s.photoCredit, cam:s.cam, facingSrc:s.facingSrc, forecastFrom:s.id};
+  const carry={osm:s.osm, kind:s.kind, notes:s.notes, photoUrl:s.photoUrl, photoCredit:s.photoCredit, photoChecked:s.photoChecked, cam:s.cam, facingSrc:s.facingSrc, forecastFrom:s.id};
   if(s.facing==null){ keepSheet({name:s.name,lat:s.lat,lon:s.lon,waves:s.waves,carry}); return; }   // he picks which way it faces
   dropDiscovered(id);
   keepSpot({name:s.name,lat:s.lat,lon:s.lon,facing:s.facing,waves:s.waves,...carry});
@@ -1156,6 +1188,7 @@ function dropDiscovered(id){ away.spots=away.spots.filter(x=>x.id!==id); if(open
 // Set SYNC_URL once the Worker is deployed, or paste the URL in the Rider sheet (it travels in the device link).
 const SYNC_URL="";
 let syncState={url:SYNC_URL, key:null, remoteUpdatedAt:null, status:"", lastPull:0};
+let photoResync=false;   // set by a device link below: the photos on this device must be re-uploaded under the new key
 try{ const s=JSON.parse(localStorage.getItem("goc.sync")||"null"); if(s&&s.key){ syncState={...syncState,...s}; } }catch(e){}
 function syncSave(){ try{ localStorage.setItem("goc.sync",JSON.stringify({url:syncState.url,key:syncState.key,remoteUpdatedAt:syncState.remoteUpdatedAt})); }catch(e){} }
 function syncOn(){ return !!(syncState.key && syncState.url); }
@@ -1170,17 +1203,25 @@ async function syncFetch(method, body, path="/v1/settings"){
 function applyRemote(doc){
   // Server copy wins only when it is newer; defaults are re-merged exactly as on page load.
   const s=doc.settings||{};
-  settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], check:s.check||settings.check, updatedAt:doc.updatedAt};
+  settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], photos:(s.photos&&typeof s.photos==="object")?s.photos:(settings.photos||{}), check:s.check||settings.check, updatedAt:doc.updatedAt};
   refreshKeptDrives(); syncState.remoteUpdatedAt=doc.updatedAt; saveLocal(); syncSave();
+  ensureKeptForecasts();
+}
+async function ensureKeptForecasts(){
+  // Kept spots that arrived from another device have no forecast here yet: pull theirs now rather than at the next full refresh.
+  // Waits out a refresh already in flight, since ingest() replaces the forecast set.
+  for(let i=0;i<120&&refreshing;i++) await new Promise(r=>setTimeout(r,500));
+  const missing=settings.kept.filter(s=>!forecasts[s.id]&&s.lat!=null&&s.lon!=null); if(!missing.length) return;
+  try{ const {docs}=await fetchForecasts(missing); mergeForecasts(docs); render(); }catch(e){ console.warn("kept forecast",e); }
 }
 async function syncPush(){
   if(!syncOn()) return;
   try{
     const r=await syncFetch("PUT",{settings, updatedAt:settings.updatedAt||new Date().toISOString(), base:syncState.remoteUpdatedAt});
-    if(r.status===200){ syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); syncSetStatus("Synced "+new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})); return; }
+    if(r.status===200){ syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); syncSetStatus("Synced "+new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})); photoSync(); return; }
     if(r.status===409 && r.data){
       // Another device wrote first. Newer timestamp wins; if that is us, push again on top of theirs.
-      if(!settings.updatedAt || r.data.updatedAt>settings.updatedAt){ applyRemote(r.data); render(); syncSetStatus("Settings updated from another device"); }
+      if(!settings.updatedAt || r.data.updatedAt>settings.updatedAt){ applyRemote(r.data); render(); syncSetStatus("Settings updated from another device"); photoSync(); }
       else { syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); return syncPush(); }
       return;
     }
@@ -1195,9 +1236,9 @@ async function syncPull(){
     const r=await syncFetch("GET");
     if(r.status===404){ await syncPush(); return; }                      // first device: migrate the local copy up
     if(r.status!==200||!r.data){ syncSetStatus("Sync failed ("+r.status+")"); return; }
-    if(!settings.updatedAt || r.data.updatedAt>settings.updatedAt){ applyRemote(r.data); render(); syncSetStatus("Synced "+new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})); }
+    if(!settings.updatedAt || r.data.updatedAt>settings.updatedAt){ applyRemote(r.data); render(); syncSetStatus("Synced "+new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})); photoSync(); }
     else if(r.data.updatedAt<settings.updatedAt){ syncState.remoteUpdatedAt=r.data.updatedAt; await syncPush(); }
-    else { syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); syncSetStatus("Synced"); }
+    else { syncState.remoteUpdatedAt=r.data.updatedAt; syncSave(); syncSetStatus("Synced"); photoSync(); }
   }catch(e){ syncSetStatus("Offline — showing this device's settings"); }
 }
 function syncSection(){
@@ -1212,20 +1253,123 @@ function syncSection(){
 }
 function bindSync(){
   const on=document.getElementById("syncOn"); if(on) on.onclick=()=>{ const u=(document.getElementById("syncUrl").value||"").trim().replace(/\/+$/,""); if(!/^https?:\/\//.test(u)){ document.getElementById("syncUrl").focus(); return; }
-    syncState.url=u; syncState.key=syncNewKey(); syncState.remoteUpdatedAt=null; syncSave(); if(!settings.updatedAt) settings.updatedAt=new Date().toISOString(); saveLocal(); syncSetStatus("Connecting…"); syncPull().then(()=>{ document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); }); };
+    syncState.url=u; syncState.key=syncNewKey(); syncState.remoteUpdatedAt=null; syncSave(); photoMarkUnsynced(); if(!settings.updatedAt) settings.updatedAt=new Date().toISOString(); saveLocal(); syncSetStatus("Connecting…"); syncPull().then(()=>{ document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); }); };
   const lk=document.getElementById("syncLink"); if(lk) lk.onclick=()=>{ const b=document.getElementById("syncLinkBox"); b.hidden=!b.hidden; document.getElementById("syncLinkText").value=syncLink(); };
   const cp=document.getElementById("syncCopy"); if(cp) cp.onclick=()=>{ const t=document.getElementById("syncLinkText"); t.select(); const done=()=>{cp.textContent="Copied"; setTimeout(()=>cp.textContent="Copy link",2000);}; try{ navigator.clipboard.writeText(t.value).then(done).catch(()=>{ try{document.execCommand("copy")}catch(_){} done(); }); }catch(_){ done(); } };
   const sh=document.getElementById("syncShare"); if(sh) sh.onclick=()=>{ navigator.share({title:"Bistué Boarding sync link",text:"Open this on the other device to link it:",url:syncLink()}).catch(()=>{}); };
   const pl=document.getElementById("syncPull"); if(pl) pl.onclick=()=>{ syncSetStatus("Pulling…"); syncPull(); };
-  const off=document.getElementById("syncOff"); if(off) off.onclick=async()=>{ await pushDisable(true); syncState={...syncState,key:null,remoteUpdatedAt:null,status:""}; try{localStorage.removeItem("goc.sync")}catch(e){} document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); render(); };
+  const off=document.getElementById("syncOff"); if(off) off.onclick=async()=>{ await pushDisable(true); syncState={...syncState,key:null,remoteUpdatedAt:null,status:""}; try{localStorage.removeItem("goc.sync")}catch(e){} photoMarkUnsynced(); document.getElementById("syncBox").innerHTML=syncSection(); bindSync(); render(); };
 }
 (function syncFromHash(){
   // A device link: #sync=<key>&url=<worker>. Store it, drop it from the address bar, pull.
   const m=location.hash.match(/^#sync=([A-Za-z0-9_\-]{32,})(?:&url=([^&]+))?/); if(!m) return;
-  syncState.key=m[1]; if(m[2]) syncState.url=decodeURIComponent(m[2]); syncState.remoteUpdatedAt=null; syncSave();
+  syncState.key=m[1]; if(m[2]) syncState.url=decodeURIComponent(m[2]); syncState.remoteUpdatedAt=null; syncSave(); photoResync=true;
   try{ history.replaceState(null,"",location.pathname+location.search); }catch(e){ location.hash=""; }
   syncState.status="Linked — pulling your settings…";
 })();
+
+/* ---------- rider photos (his own photo per spot, curated or added) ---------- */
+// "Use my photo" in a spot's detail opens the phone's camera or photo picker; the picture is resized here to the tile's
+// 480×320 JPEG (about 40 KB) and kept in IndexedDB keyed by spot id, so it survives the forecast cache and never reloads
+// from the network. With sync on it is also uploaded to the Worker (PUT /v1/photo/<spotId>, same sync-key auth), and the
+// settings document lists which spots have one (settings.photos: spotId -> taken at), so other linked devices fetch the ones
+// they lack in the background. "Remove photo" drops it everywhere and the tile goes back to the built-in or Commons photo.
+const PHOTO_W=480, PHOTO_H=320, PHOTO_TARGET=48*1024, PHOTO_MAX=100*1024;   // the Worker refuses anything over PHOTO_MAX
+var riderPhotos={};            // spotId -> {url (object URL), updatedAt, synced}
+let photoTarget=null, photoSyncing=false, photoSyncAgain=false, photosReady=null;   // photosReady: the IndexedDB load, awaited before any sync
+function photoDB(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open("goc.photos",1); }catch(e){ return rej(e); } r.onupgradeneeded=()=>{ r.result.createObjectStore("photos"); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error||new Error("IndexedDB")); r.onblocked=()=>rej(new Error("IndexedDB blocked")); }); }
+async function photoStore(mode, fn){
+  // One transaction on the "photos" store; resolves with the request's result (or whatever fn returned) once it commits.
+  const db=await photoDB();
+  try{ return await new Promise((res,rej)=>{ const tx=db.transaction("photos",mode); const out=fn(tx.objectStore("photos")); tx.oncomplete=()=>res(out&&typeof out==="object"&&"result" in out&&!Array.isArray(out)? out.result: out); tx.onerror=()=>rej(tx.error||new Error("IndexedDB")); tx.onabort=()=>rej(tx.error||new Error("IndexedDB aborted")); }); }
+  finally{ db.close(); }
+}
+function photoShow(id, blob, updatedAt, synced){ const old=riderPhotos[id]; if(old) try{ URL.revokeObjectURL(old.url); }catch(e){} riderPhotos[id]={url:URL.createObjectURL(blob),updatedAt,synced}; }
+function photoDrop(id){ const old=riderPhotos[id]; if(old) try{ URL.revokeObjectURL(old.url); }catch(e){} delete riderPhotos[id]; }
+function loadRiderPhotos(){ return photosReady=loadRiderPhotosNow(); }
+async function loadRiderPhotosNow(){
+  try{
+    const rows=await photoStore("readonly",st=>{ const rows=[]; const rq=st.openCursor(); rq.onsuccess=()=>{ const c=rq.result; if(c){ rows.push({id:c.key,...c.value}); c.continue(); } }; return rows; });
+    for(const r of rows){ if(r.blob) photoShow(r.id,r.blob,r.updatedAt,photoResync?false:!!r.synced); }
+    if(photoResync){ photoResync=false; photoMarkUnsynced(); }
+    if(rows.length&&dayKeys.length) render();
+  }catch(e){ console.warn("photos unavailable",e); }
+  photoSync();
+}
+async function decodePhoto(file){
+  if(window.createImageBitmap){ try{ return await createImageBitmap(file,{imageOrientation:"from-image"}); }catch(e){} }
+  return new Promise((res,rej)=>{ const u=URL.createObjectURL(file); const im=new Image(); im.onload=()=>{ URL.revokeObjectURL(u); res(im); }; im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error("can't decode")); }; im.src=u; });
+}
+async function shrinkPhoto(file){
+  // Centre-crop to the tile's 3:2, 480×320, JPEG; the quality steps down until it is about 40 KB.
+  const im=await decodePhoto(file); const w=im.naturalWidth||im.width, h=im.naturalHeight||im.height; if(!w||!h) throw new Error("empty image");
+  const c=document.createElement("canvas"); c.width=PHOTO_W; c.height=PHOTO_H; const g=c.getContext("2d");
+  const sc=Math.max(PHOTO_W/w,PHOTO_H/h), dw=w*sc, dh=h*sc; g.drawImage(im,(PHOTO_W-dw)/2,(PHOTO_H-dh)/2,dw,dh); if(im.close) im.close();
+  let blob=null;
+  for(const q of [0.82,0.72,0.62,0.52,0.42]){ blob=await new Promise(r=>c.toBlob(r,"image/jpeg",q)); if(!blob) throw new Error("no JPEG"); if(blob.size<=PHOTO_TARGET) break; }
+  if(blob.size>PHOTO_MAX) throw new Error("photo too large");
+  return blob;
+}
+function pickRiderPhoto(id){ const inp=document.getElementById("photoFile"); if(!inp) return; photoTarget=id; inp.value=""; inp.click(); }
+function photoNote(id,t){ const b=document.querySelector(`[data-photo="${CSS.escape(id)}"]`); if(b) b.textContent=t; }
+document.getElementById("photoFile").onchange=async()=>{
+  const inp=document.getElementById("photoFile"); const f=inp.files&&inp.files[0], id=photoTarget; if(!f||!id) return;
+  photoNote(id,"Saving photo…");
+  try{ await setRiderPhoto(id,f); }catch(e){ console.warn("photo",e); photoNote(id,"Couldn't use that photo"); setTimeout(()=>photoNote(id,"Use my photo"),3000); }
+};
+async function setRiderPhoto(id, file){
+  const blob=await shrinkPhoto(file); const updatedAt=new Date().toISOString();
+  await photoStore("readwrite",st=>st.put({blob,updatedAt,synced:false},id));
+  photoShow(id,blob,updatedAt,false);
+  settings.photos=settings.photos||{}; settings.photos[id]=updatedAt; saveSettings(); render();
+  photoSync();
+}
+async function removeRiderPhoto(id){
+  photoDrop(id); if(settings.photos) delete settings.photos[id]; saveSettings(); render();
+  try{ await photoStore("readwrite",st=>st.delete(id)); }catch(e){}
+  if(syncOn()){ try{ const r=await photoFetch("DELETE",id); if(!r.ok) throw new Error(r.status); }catch(e){ photoPendingDelete(id,true); } }
+}
+function photoPendingDelete(id, add){ try{ const l=JSON.parse(localStorage.getItem("goc.photos.rm")||"[]").filter(x=>x!==id); if(add) l.push(id); localStorage.setItem("goc.photos.rm",JSON.stringify(l)); }catch(e){} }
+function photoMarkUnsynced(){
+  // A new sync key (turned on, linked, or unlinked): whatever is here has to reach that rider's store again.
+  for(const p of Object.values(riderPhotos)) p.synced=false;
+  photoStore("readwrite",st=>{ const rq=st.openCursor(); rq.onsuccess=()=>{ const c=rq.result; if(c){ c.update({...c.value,synced:false}); c.continue(); } }; }).catch(()=>{});
+}
+async function photoFetch(method, id, blob){
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),20000);
+  try{ return await fetch(syncState.url.replace(/\/+$/,"")+"/v1/photo/"+encodeURIComponent(id),{method,signal:c.signal,headers:{Authorization:"Bearer "+syncState.key,...(blob?{"Content-Type":"image/jpeg"}:{})},body:blob||undefined}); } finally{ clearTimeout(t); }
+}
+async function photoSync(){
+  // Background, after every successful settings sync: upload what was taken here, fetch what another device added,
+  // drop what was removed elsewhere. Scores and tiles never wait for it; a tile is patched in place when its photo lands.
+  if(!syncOn()) return;
+  if(photoSyncing){ photoSyncAgain=true; return; }
+  photoSyncing=true; await photosReady;
+  try{
+    do{
+      photoSyncAgain=false;
+      const want=settings.photos||{}; let changed=false;
+      let rm=[]; try{ rm=JSON.parse(localStorage.getItem("goc.photos.rm")||"[]"); }catch(e){}
+      for(const id of rm){ try{ const r=await photoFetch("DELETE",id); if(r.ok) photoPendingDelete(id,false); }catch(e){} }   // removals that didn't reach the service
+      for(const [id,p] of Object.entries(riderPhotos)){ if(p.synced) continue;
+        const rec=await photoStore("readonly",st=>st.get(id)); if(!rec||!rec.blob) continue;
+        try{ const r=await photoFetch("PUT",id,rec.blob); if(!r.ok) continue; }catch(e){ continue; }
+        await photoStore("readwrite",st=>st.put({...rec,synced:true},id)); p.synced=true;
+        if(!want[id]||want[id]<rec.updatedAt){ want[id]=rec.updatedAt; settings.photos=want; saveSettings(); } }
+      for(const [id,at] of Object.entries(want)){ const p=riderPhotos[id]; if(p&&(!p.synced||p.updatedAt>=at)) continue;
+        try{ const r=await photoFetch("GET",id); if(!r.ok) continue; const blob=await r.blob(); if(!blob.size) continue;
+          await photoStore("readwrite",st=>st.put({blob,updatedAt:at,synced:true},id)); photoShow(id,blob,at,true); changed=true;
+          const spot=allSpots().find(s=>s.id===id); if(spot) patchPhoto(spot); }catch(e){} }
+      for(const id of Object.keys(riderPhotos)){ if(want[id]||!riderPhotos[id].synced) continue;
+        try{ const r=await photoFetch("GET",id);
+          if(r.status===404){ await photoStore("readwrite",st=>st.delete(id)); photoDrop(id); changed=true; const spot=allSpots().find(s=>s.id===id); if(spot) patchPhoto(spot); }   // removed on another device
+          else if(r.ok){ want[id]=riderPhotos[id].updatedAt; settings.photos=want; saveSettings(); } }   // still on the service: the settings list just lost it in a merge
+        catch(e){} }
+      if(changed&&openSpot) render();   // the open detail's Remove photo button follows
+    }while(photoSyncAgain);
+  }catch(e){ console.warn("photo sync",e); }
+  finally{ photoSyncing=false; }
+}
 
 /* ---------- data ---------- */
 function ingest(docs, fetchedAt){
@@ -1319,6 +1463,8 @@ async function refreshAll(manual){
   setRefreshUI("idle","");
   document.getElementById("refreshBtn").onclick=()=>refreshAll(true);
   if(syncOn()) syncPull();   // settings sync never holds up the forecast
+  loadRiderPhotos();         // his own spot photos from IndexedDB; tiles are patched when they land
+  setTimeout(()=>enrichKept(),2500);   // added spots still without a photo: background Commons lookup, well after the forecast call
   applyDayHash(); window.addEventListener("hashchange",applyDayHash);
   if("serviceWorker" in navigator){ try{ navigator.serviceWorker.register("sw.js").then(r=>{swReg=r;}).catch(()=>{}); navigator.serviceWorker.addEventListener("message",e=>{ if(e.data&&e.data.url){ const i=e.data.url.indexOf("#"); if(i>=0){ location.hash=e.data.url.slice(i); } } }); }catch(e){} }
   refreshAll(false);

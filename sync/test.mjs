@@ -2,7 +2,7 @@
 import worker from "./worker.js";
 export const store = new Map();
 export const kvStub = {
-  get: async (k, t) => { const v = store.get(k); return v == null ? null : (t === "json" ? JSON.parse(v) : v); },
+  get: async (k, t) => { const v = store.get(k); return v == null ? null : (t === "json" ? JSON.parse(v) : v); },   // binary values (photos) are stored and returned as-is
   put: async (k, v) => { store.set(k, v); },
   delete: async (k) => { store.delete(k); },
   list: async ({ prefix = "", cursor } = {}) => ({ keys: [...store.keys()].filter(k => k.startsWith(prefix)).map(name => ({ name })), list_complete: true, cursor: undefined }),
@@ -49,4 +49,29 @@ r = await req("/v1/admin/riders", "GET", undefined, A); const L2 = (await r.json
 assert(L2.subs.length === 1 && L2.state.alerted["rufus|2026-10-17"].score === 8.4, "pruned subs and state persisted");
 r = await push("DELETE", { endpoint: "https://push.example/two" }); assert((await r.json()).count === 0, "unsubscribe -> 0");
 r = await req("/v1/admin/riders", "GET", undefined, A); assert((await r.json()).riders.length === 0, "rider without subscriptions is not listed");
+
+// rider photos (binary JPEG per spot, 100 KB max)
+const jpeg = n => { const b = new Uint8Array(n); b.set([0xff, 0xd8, 0xff, 0xe0]); for (let i = 4; i < n; i++) b[i] = (i * 31) & 0xff; return b; };
+const photo = (id, method, body, headers = {}, key = KEY) => worker.fetch(new Request("https://x.workers.dev/v1/photo/" + id, { method, headers: { Origin: ORIGIN, Authorization: "Bearer " + key, ...headers }, body }), env);
+const small = jpeg(40 * 1024);
+r = await photo("manzanita", "GET"); assert(r.status === 404, "no photo yet -> 404");
+r = await worker.fetch(new Request("https://x.workers.dev/v1/photo/manzanita", { method: "PUT", headers: { Origin: ORIGIN, "Content-Type": "image/jpeg" }, body: small }), env); assert(r.status === 401, "photo without a sync key -> 401");
+r = await photo("manzanita", "PUT", small, { "Content-Type": "image/jpeg" }); assert(r.status === 200 && (await r.json()).bytes === small.length, "40 KB JPEG stored");
+r = await photo("manzanita", "GET"); const got = new Uint8Array(await r.arrayBuffer());
+assert(r.status === 200 && r.headers.get("Content-Type") === "image/jpeg" && r.headers.get("Access-Control-Allow-Origin") === ORIGIN && got.length === small.length && got.every((v, i) => v === small[i]), "photo served back byte for byte as image/jpeg with CORS");
+r = await photo("manzanita", "GET", undefined, {}, "j".repeat(40)); assert(r.status === 404, "another rider's key sees no photo");
+r = await photo("k-mission-bay", "PUT", small, { "Content-Type": "image/jpeg" }); assert(r.status === 200, "a kept spot's id (k-…) is a valid photo key");
+r = await photo("manzanita", "PUT", jpeg(100 * 1024 + 1), { "Content-Type": "image/jpeg" }); assert(r.status === 413, "over 100 KB -> 413");
+r = await photo("manzanita", "PUT", small, { "Content-Type": "image/jpeg", "Content-Length": String(200 * 1024) }); assert(r.status === 413, "Content-Length over the limit -> 413 before reading the body");
+r = await photo("manzanita", "PUT", small, { "Content-Type": "image/png" }); assert(r.status === 400, "wrong content type -> 400");
+r = await photo("manzanita", "PUT", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]), { "Content-Type": "image/jpeg" }); assert(r.status === 400, "bytes that aren't a JPEG -> 400");
+r = await photo("manzanita", "GET"); assert(r.status === 200 && (await r.arrayBuffer()).byteLength === small.length, "rejected uploads left the stored photo alone");
+r = await photo("Manzanita", "GET"); assert(r.status === 404, "spot id must be a lowercase slug (route not found)");
+r = await photo("a".repeat(60), "GET"); assert(r.status === 404, "spot id longer than 48 chars -> not found");
+r = await worker.fetch(new Request("https://x.workers.dev/v1/photo/manzanita", { method: "POST", headers: { Origin: ORIGIN, Authorization: "Bearer " + KEY }, body: small }), env); assert(r.status === 405, "POST -> 405");
+r = await photo("manzanita", "DELETE"); assert(r.status === 200, "Remove photo -> 200");
+r = await photo("manzanita", "GET"); assert(r.status === 404, "deleted photo is gone");
+r = await photo("manzanita", "DELETE"); assert(r.status === 200, "deleting again is harmless");
+r = await req("/v1/admin/riders", "GET", undefined, A); assert(r.status === 200 && (await r.json()).riders.length === 0, "photo keys don't show up as riders");
+assert([...store.keys()].filter(k => k.startsWith("ph:")).length === 1 && [...store.keys()].every(k => !k.startsWith("ph:") || /^ph:[0-9a-f]{64}:k-mission-bay$/.test(k)), "photos live under ph:<rider hash>:<spot id>");
 if (!process.env.WORKER_TEST_QUIET) console.log("all worker tests passed");

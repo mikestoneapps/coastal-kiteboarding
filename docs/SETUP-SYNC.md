@@ -1,6 +1,6 @@
 # Settings sync and push alerts — one-time setup
 
-Sync keeps the rider profile, comfort limits, per-spot overrides, checklist edits, alert settings and kept spots the same on every device. It runs on a free Cloudflare Worker with a small KV store; the page works exactly as before until you turn it on, and keeps working offline afterwards (the phone's copy is the cache).
+Sync keeps the rider profile, comfort limits, per-spot overrides, checklist edits, alert settings, kept spots and the rider's own spot photos the same on every device. It runs on a free Cloudflare Worker with a small KV store; the page works exactly as before until you turn it on, and keeps working offline afterwards (the phone's copy is the cache).
 
 There is no login. The first device makes a long random sync key; "Link another device" gives you a link carrying that key to open on the next device. The Worker only ever stores a hash of the key. Anyone with the link can read and change the settings, so text or AirDrop it to yourself rather than posting it.
 
@@ -22,6 +22,11 @@ If the page ever moves to a custom domain, add that origin under **Settings → 
 From then on every change saves locally first and copies up about a second later; other devices pull when opened or brought to the foreground. If two devices change things while offline, the newer change wins.
 
 **Unlink this device** forgets the key on that device only; settings stay as they are. To revoke a leaked link, unlink everywhere, turn sync on again on the phone (a new key) and relink.
+
+**If you pasted the Worker code into the dashboard before 2026-10-16, paste the current `sync/worker.js` again** (Edit code → select all → paste → Deploy). Each phase has added routes: push alerts in Phase 3, and the photo routes below. An old Worker answers the new calls with 404; the page then simply keeps the photos on the device that took them.
+
+## Your own spot photos
+Open any spot, curated or added, and tap **Use my photo**: the phone offers the camera or the photo library, the picture is shrunk on the phone to the tile's size (480×320 JPEG, about 40 KB) and kept in the app's own storage (IndexedDB, keyed by spot id), so it never reloads from the network. With sync on it is also uploaded to the Worker (`PUT /v1/photo/<spot id>`, same sync key, 100 KB limit per photo, stored in the `SETTINGS` KV namespace under the rider's hashed key) and listed in the settings document; every other linked device fetches the photos it lacks in the background the next time it syncs. **Remove photo** deletes it from the Worker and from every device and puts the built-in or Wikimedia Commons photo back. Nothing else is needed in the dashboard: the photo routes use the existing `SETTINGS` binding. Free-tier KV allows 1 GB, which is tens of thousands of photos at this size.
 
 ## Optional: deploy from GitHub instead of pasting
 `.github/workflows/sync-worker.yml` deploys `sync/worker.js` on every push to `main` that touches `sync/`, but only if the repo has two secrets: `CLOUDFLARE_API_TOKEN` (dashboard → profile → API Tokens → "Edit Cloudflare Workers" template) and `CLOUDFLARE_ACCOUNT_ID`. Put the KV namespace id in `sync/wrangler.toml`. Without the secrets the job skips itself.

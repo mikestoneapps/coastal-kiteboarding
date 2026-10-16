@@ -24,7 +24,7 @@ function sandbox(net = {}) {
   const store = {};
   const S = {
     console: { log: console.log, error: console.error, warn: () => {} }, Date, Math, Object, Array, Number, String, JSON, Promise, setTimeout, clearTimeout, isNaN, encodeURIComponent, AbortController, Error,
-    HOMES, settings: { home: "X", custom: { ...F.HERE }, radius: 90, kept: [], overrides: {}, updatedAt: null }, forecasts: {}, openSpot: null, syncState: { key: null },
+    HOMES, settings: { home: "X", custom: { ...F.HERE }, radius: 90, kept: [], overrides: {}, updatedAt: null }, forecasts: {}, openSpot: null, syncState: { key: null }, riderPhotos: {},
     GLYPH: "<svg/>", esc: s => String(s), compass: scoring.compass, mins: m => m + "m", renders: 0,
     localStorage: { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
     document: { querySelector: () => null, getElementById: () => null }, CSS: { escape: s => s },
