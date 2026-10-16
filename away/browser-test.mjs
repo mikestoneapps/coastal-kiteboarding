@@ -1,8 +1,10 @@
 // `node away/browser-test.mjs [--live]` — drives index.html in headless Chromium (Playwright).
-// Default: every external host is intercepted and answered from away/fixtures.mjs, so it runs offline and
+// Default: every external host is intercepted and answered from away/fixtures.mjs, and the same-origin
+// away-spots.json is served from the fixture too (opts.file: ok | far | empty | missing | fail), so it runs offline and
 // deterministically. Home mode is compared against a second copy of the page (BASELINE_DIR, e.g. `main`'s
 // index.html) to prove nothing changed there. `--live` lets Open-Meteo, Overpass, Nominatim and Commons
-// through for the real check (pending: the build container can't reach them, see docs/BUILD-PLAN.md).
+// through for the real check (the build container can't reach them, see docs/BUILD-PLAN.md); the catalogue
+// still comes from the fixture unless the repo has a real away-spots.json and you pass --real-file.
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -11,7 +13,7 @@ import { createRequire } from "node:module";
 import * as F from "./fixtures.mjs";
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const LIVE = process.argv.includes("--live");
+const LIVE = process.argv.includes("--live"), REAL_FILE = process.argv.includes("--real-file");
 const BASELINE = process.env.BASELINE_DIR || "";
 const pw = (() => { for (const p of [process.env.PLAYWRIGHT_MODULE, "playwright", "/opt/node-tools/node_modules/playwright"]) { if (!p) continue; try { return require(p); } catch (e) {} } throw new Error("playwright not found; set PLAYWRIGHT_MODULE"); })();
 let fails = 0;
@@ -28,12 +30,19 @@ function mock(page, opts = {}) {
     const u = route.request().url(), body = route.request().postData() || "";
     const json = (o, status = 200) => route.fulfill({ status, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(o) });
     if (/\/obs\.json/.test(u)) return json({ obs: {} });   // station readings arrive at their own pace; keep the comparison deterministic
+    if (/\/away-spots\.json/.test(u) && !REAL_FILE) {
+      log.push("away-spots.json");
+      const f = opts.file || "ok";
+      if (f === "missing") return json({ error: "not found" }, 404);
+      if (f === "fail") return route.abort("failed");
+      return json(f === "far" ? F.AWAY_FILE_FAR : f === "empty" ? F.AWAY_FILE_EMPTY : F.AWAY_FILE);
+    }
     if (u.startsWith("http://127.0.0.1")) return route.continue();
     if (LIVE && !/fonts\.|api\.weather\.gov/.test(u)) return route.continue();
-    log.push(u.split("?")[0] + (body ? " " + body.slice(0, 30) : ""));
+    log.push(u.split("?")[0] + (body ? " " + decodeURIComponent(body.replace(/^data=/, "")).slice(0, 200) : ""));
     if (/api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json(forecastFor(n)); }
     if (/marine-api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json(F.marine(n)); }
-    if (/overpass/.test(u)) { if (opts.overpass === "down") return json({}, 504); if (/surveillance/.test(body)) return json(F.OVERPASS_CAMS); if (/coastline/.test(body)) return json(F.OVERPASS_SHORE); return json(opts.overpass === "empty" ? F.OVERPASS_EMPTY : F.OVERPASS_SPOTS); }
+    if (/overpass/.test(u)) { if (opts.overpass === "down") return json({}, 504); if (opts.overpass === "slow") await new Promise(r => setTimeout(r, 4000)); if (/surveillance/.test(body)) return json(F.OVERPASS_CAMS); if (/coastline/.test(body)) return json(F.OVERPASS_SHORE); return json({}, 400); }
     if (/commons\.wikimedia\.org/.test(u)) return json(F.COMMONS);
     if (/upload\.wikimedia\.org/.test(u)) return route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64") });
     if (/nominatim/.test(u)) return json(F.NOMINATIM);
@@ -64,7 +73,7 @@ try {
     const rows = await scored(page);
     assert(rows > 0 && rows <= 15, `home: ${rows} curated rows within 1h30 of Lake Oswego`);
     assert((await page.locator("#away").count()) === 0 && (await page.locator(".row.pending").count()) === 0, "home: no away banner, no pending rows");
-    assert(!log.some(l => /overpass|nominatim|commons/.test(l)), "home: no OpenStreetMap, Nominatim or Commons calls");
+    assert(!log.some(l => /overpass|nominatim|commons|away-spots/.test(l)), "home: no OpenStreetMap, Nominatim or Commons calls, no catalogue fetch");
     assert(errors.length === 0, "home: no page errors (" + errors.join(" | ") + ")");
     const mine = { list: await text(page, "#list"), hero: await text(page, "#hero"), narr: await text(page, "#narr"), sub: await text(page, "#sub") };
     await page.click("#homeBC"); await page.waitForTimeout(200); mine.bc = await text(page, "#list");
@@ -82,7 +91,7 @@ try {
     await page.click("#homeX"); await page.waitForSelector("#plFind");
     assert((await page.locator("#plq").count()) === 1, "Elsewhere sheet has the place-name search");
     await page.click('#places button[data-p="Newport"]'); await page.click("#plSave"); await page.waitForTimeout(300);
-    assert((await page.locator("#away").count()) === 0 && !log.some(l => /overpass/.test(l)), "Elsewhere = Newport (within 150 mi): no discovery, curated list as before");
+    assert((await page.locator("#away").count()) === 0 && !log.some(l => /overpass|away-spots/.test(l)), "Elsewhere = Newport (within 150 mi): no discovery, curated list as before");
     assert(errors.length === 0, "still no page errors");
     await ctx.close();
   }
@@ -103,12 +112,16 @@ try {
     const names = await page.locator(".row .name").allInnerTexts();
     assert(names.some(n => /Sandy Cove Kite Beach/.test(n)) && names.some(n => /Kite launch/.test(n)) && !names.some(n => /Private Cove/.test(n)), "discovered rows listed: " + names.join(" / "));
     assert((await page.locator(".row.pending").count()) === 0, "every discovered spot got a score from the batched forecast call");
-    assert(log.filter(l => /api\.open-meteo/.test(l)).length >= 2 && log.filter(l => /overpass/.test(l)).length >= 2, "one Overpass search + one shoreline query + one batched forecast");
+    assert(log.filter(l => /away-spots/.test(l)).length === 1 && log.filter(l => /api\.open-meteo/.test(l)).length >= 2 && !log.some(l => /overpass.*sport/.test(l)), "one catalogue fetch + one batched forecast; no Overpass spot search");
+    await page.waitForFunction(() => /faces W/.test(document.querySelector("#detail-a-n101")?.textContent || "") || !document.querySelector("#detail-a-n101"), null, { timeout: 100 }).catch(() => {});
+    assert(log.filter(l => /overpass/.test(l) && /coastline/.test(l)).length === 1, "shoreline lookup went to Overpass in the background");
+    assert((await page.evaluate(() => { const c = JSON.parse(localStorage.getItem("goc.awayspots") || "null"); return c && c.spots.length; })) === 9, "catalogue cached in localStorage with a date");
     assert(!names.some(n => /Manzanita|Rufus/.test(n)), "curated Oregon spots are beyond the radius, not in the list");
     assert(/15 more spots beyond|more spots beyond/.test(await text(page, "#beyond")), "the curated spots are counted as 'beyond'");
     assert(/Best bet|Nothing worth the drive/i.test(await text(page, "#hero")), "hero renders in away mode");
     // open Sandy Cove: auto paragraph, Keep button, cam link
     await page.click('button[data-open="a-n101"]'); await page.waitForSelector("#detail-a-n101 .actions");
+    await page.waitForFunction(() => /faces W/.test(document.querySelector("#detail-a-n101")?.textContent || ""), null, { timeout: 10000 }).catch(() => {});
     const d = await text(page, "#detail-a-n101");
     assert(/Auto · found on OpenStreetMap/.test(d) && /faces W/.test(d) && /Keep this spot/.test(d), "detail: auto paragraph with inferred facing and Keep button");
     await page.waitForFunction(() => /Cam · Sandy Cove surf cam/.test(document.querySelector("#detail-a-n101")?.textContent || ""), null, { timeout: 10000 }).catch(() => {});
@@ -138,19 +151,22 @@ try {
     await page.click("#homeX"); await page.waitForTimeout(300); await page.click("#closeSheet");
     const logN = log.filter(l => /overpass/.test(l)).length;
     await page.reload(); await page.waitForSelector("#away", { timeout: 10000 }); await page.waitForTimeout(500);
-    assert(/last search/.test(await text(page, "#away")) && log.filter(l => /overpass/.test(l)).length === logN, "reopening the same area uses the cached search, no new Overpass call");
+    assert(/last search/.test(await text(page, "#away")) && log.filter(l => /overpass/.test(l)).length === logN && log.filter(l => /away-spots/.test(l)).length === 1, "reopening the same area uses the cached search: no new Overpass call, no catalogue refetch");
+    // Search again: refetches the catalogue and re-scores
+    await page.click("#awayAgain"); await page.waitForFunction(() => /spots within .* from OpenStreetMap/.test(document.querySelector("#away")?.textContent || "") && !/last search/.test(document.querySelector("#away")?.textContent || ""), null, { timeout: 15000 });
+    assert(log.filter(l => /away-spots/.test(l)).length === 2 && (await page.locator(".row.pending").count()) === 0, "Search again refetches the catalogue and scores the rows");
     assert(errors.length === 0, "away: no page errors (" + errors.join(" | ") + ")");
     await ctx.close();
   }
 
-  /* ---------- 3. away mode by GPS; nothing on OSM; OSM down ---------- */
+  /* ---------- 3. away mode by GPS; nothing nearby; file missing; Overpass down; offline ---------- */
   {
-    const { page, errors, ctx } = await newPage(browser, url, { geo: { latitude: 32.77, longitude: -117.25 }, overpass: "empty" });
+    const { page, errors, ctx } = await newPage(browser, url, { geo: { latitude: 32.77, longitude: -117.25 }, file: "far" });
     await page.waitForSelector(".row", { timeout: 20000 });
     await page.click("#homeX"); await page.waitForSelector("#plGPS"); await page.click("#plGPS");
     await page.waitForSelector("#away", { timeout: 10000 });
     await page.waitForFunction(() => /No spots found here yet/.test(document.querySelector("#away")?.textContent || ""), null, { timeout: 10000 });
-    assert(true, "GPS 900 mi from home -> away mode; empty Overpass -> 'No spots found here yet'");
+    assert(/list updated Oct 12/.test(await text(page, "#away")), "GPS 900 mi from home -> away mode; nothing in the catalogue nearby -> 'No spots found here yet' with the list date");
     assert((await page.locator("#awayHand").count()) === 1 && (await page.locator(".row").count()) === 0 && (await page.locator(".empty").count()) === 0, "empty state: add-by-hand offered, no rows, no 'widen the slider' message");
     await page.click("#awayHand"); await page.waitForSelector("#ksKeep");
     await page.fill("#ksname", "Hand Beach"); await page.fill("#ksll", "32.80, -117.26"); await page.click('#ksface button[data-deg="270"]'); await page.click("#ksKeep");
@@ -159,12 +175,47 @@ try {
     assert(errors.length === 0, "empty state: no page errors (" + errors.join(" | ") + ")");
     await ctx.close();
   }
+  for (const f of ["missing", "empty"]) {
+    const { page, errors, ctx } = await newPage(browser, url, { geo: { latitude: 32.77, longitude: -117.25 }, file: f });
+    await page.waitForSelector(".row", { timeout: 20000 });
+    await page.click("#homeX"); await page.waitForSelector("#plGPS"); await page.click("#plGPS");
+    await page.waitForFunction(() => /No spots found here yet/.test(document.querySelector("#away")?.textContent || ""), null, { timeout: 15000 });
+    assert((await page.locator("#awayHand").count()) === 1 && (await page.locator("#awayAgain").count()) === 1, `away-spots.json ${f}: the 'nothing found' banner with Add by hand + Search again`);
+    assert(errors.length === 0, `${f} catalogue: no page errors (` + errors.join(" | ") + ")");
+    await ctx.close();
+  }
   {
     const { page, errors, ctx } = await newPage(browser, url, { geo: { latitude: 32.77, longitude: -117.25 }, overpass: "down" });
     await page.waitForSelector(".row", { timeout: 20000 });
     await page.click("#homeX"); await page.waitForSelector("#plGPS"); await page.click("#plGPS");
-    await page.waitForFunction(() => /Couldn't reach OpenStreetMap/.test(document.querySelector("#away")?.textContent || ""), null, { timeout: 15000 });
-    assert((await page.locator("#awayAgain").count()) === 1 && (await page.locator("#awayHand").count()) === 1, "Overpass down on both mirrors: clear error with Search again + Add by hand");
+    await page.waitForFunction(() => /spots within .* from OpenStreetMap/.test(document.querySelector("#away")?.textContent || ""), null, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    assert((await page.locator(".row:not(.pending) .name span", { hasText: "auto" }).count()) >= 5 && (await page.locator(".row.pending").count()) === 0, "Overpass down on both mirrors: the catalogue spots are still listed and scored");
+    await page.click('button[data-open="a-n101"]'); await page.waitForSelector("#detail-a-n101 .actions");
+    assert(/shoreline direction unknown/.test(await text(page, "#detail-a-n101")) && /Keep this spot/.test(await text(page, "#detail-a-n101")), "no shoreline answer: the spot stays 'auto, facing unknown' with Keep");
+    assert(errors.length === 0, "Overpass down: no page errors (" + errors.join(" | ") + ")");
+    await ctx.close();
+  }
+  {
+    const { page, errors, ctx } = await newPage(browser, url, { geo: { latitude: 32.77, longitude: -117.25 }, overpass: "slow" });
+    await page.waitForSelector(".row", { timeout: 20000 });
+    await page.click("#homeX"); await page.waitForSelector("#plGPS"); await page.click("#plGPS");
+    const t0 = Date.now();
+    await page.waitForFunction(() => /spots within .* from OpenStreetMap/.test(document.querySelector("#away")?.textContent || "") && !document.querySelector(".row.pending"), null, { timeout: 15000 });
+    assert(Date.now() - t0 < 3500, `Overpass slow (4 s): scores landed without waiting for the shoreline (${Date.now() - t0} ms)`);
+    await page.click('button[data-open="a-n101"]'); await page.waitForSelector("#detail-a-n101 .actions");
+    assert(/shoreline direction unknown/.test(await text(page, "#detail-a-n101")), "facing unknown while the shoreline lookup is still out");
+    await page.waitForFunction(() => /faces W/.test(document.querySelector("#detail-a-n101")?.textContent || ""), null, { timeout: 10000 });
+    assert(true, "facing lands later from the background lookup");
+    assert(errors.length === 0, "Overpass slow: no page errors (" + errors.join(" | ") + ")");
+    await ctx.close();
+  }
+  {
+    const { page, errors, ctx } = await newPage(browser, url, { geo: { latitude: 32.77, longitude: -117.25 }, file: "fail" });
+    await page.waitForSelector(".row", { timeout: 20000 });
+    await page.click("#homeX"); await page.waitForSelector("#plGPS"); await page.click("#plGPS");
+    await page.waitForFunction(() => /Couldn't load the spot list/.test(document.querySelector("#away")?.textContent || ""), null, { timeout: 15000 });
+    assert((await page.locator("#awayAgain").count()) === 1 && (await page.locator("#awayHand").count()) === 1, "catalogue fetch fails (offline): clear error with Search again + Add by hand");
     assert(errors.length === 0, "error state: no page errors (" + errors.join(" | ") + ")");
     await ctx.close();
   }

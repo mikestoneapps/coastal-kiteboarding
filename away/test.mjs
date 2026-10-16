@@ -1,7 +1,7 @@
 // `node away/test.mjs` — the page's away-from-home block (index.html, "away from home" section) run under Node
-// against mock OpenStreetMap / Open-Meteo / Commons answers from away/fixtures.mjs. No network.
-// Checks: the away trigger, Overpass parsing and de-duplication, facing from the shoreline, the inferred
-// direction rules feeding the scorer, webcams and photos, and the discover() state machine (found / empty / error).
+// against a mock away-spots.json and mock OpenStreetMap / Open-Meteo / Commons answers from away/fixtures.mjs. No network.
+// Checks: the away trigger, filtering the catalogue by radius and de-duplication, facing from the shoreline, the inferred
+// direction rules feeding the scorer, webcams and photos, and the discover() state machine (found / empty / missing / error).
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
@@ -34,6 +34,7 @@ function sandbox(net = {}) {
     fetchJSON: async url => { if (net.json) return net.json(url); throw new Error("no network in tests"); },
     fetch: async (url, opts) => {
       const body = opts && opts.body ? decodeURIComponent(String(opts.body).replace(/^data=/, "")) : "";
+      if (/^away-spots\.json/.test(String(url))) { S.fileFetches = (S.fileFetches || 0) + 1; const f = net.file ? await net.file() : null; if (f === null || f === undefined) throw new Error("Failed to fetch"); if (f.status) return { ok: false, status: f.status, json: async () => ({}) }; return { ok: true, status: 200, json: async () => f }; }
       const r = net.fetch ? await net.fetch(url, body) : null;
       if (r === undefined || r === null) throw new Error("no network in tests");
       if (r.status && r.status !== 200) return { ok: false, status: r.status, json: async () => ({}) };
@@ -63,14 +64,15 @@ function sandbox(net = {}) {
   assert(S.searchMiles() === 52, "drive radius 1h30 -> 52 straight-line miles (47 mph, 1.35 road factor)");
   S.settings.radius = 360; assert(S.searchMiles() === 120, "search radius caps at 120 mi");
   S.settings.radius = 30; assert(S.searchMiles() === 30, "search radius floors at 30 mi");
-  assert(/sport.*kitesurf\|kiteboard\|windsurf/.test(S.overpassQuery(32.77, -117.25, 52)) && /natural.*beach.*name/.test(S.overpassQuery(32.77, -117.25, 52)) && S.overpassQuery(32.77, -117.25, 52).includes("around:83668"), "Overpass query asks for sport tags and named beaches within the radius in metres");
 }
 
-/* ---------- 2. parsing ---------- */
+/* ---------- 2. picking from the catalogue ---------- */
 {
   const S = sandbox();
-  const got = S.parseOverpass(F.OVERPASS_SPOTS, F.HERE.lat, F.HERE.lon);
+  const got = S.pickAway(F.AWAY_FILE, F.HERE.lat, F.HERE.lon, 52);
   const names = got.map(x => x.name);
+  assert(!names.some(n => /Hood River|Hatteras|Flag Beach/.test(n)), "entries outside the radius (worldwide catalogue) are left out");
+  assert(S.pickAway(F.AWAY_FILE, F.HERE.lat, F.HERE.lon, 7).length === 3 && S.pickAway(F.AWAY_FILE, 45.7093, -121.5003, 30).map(x => x.name).join() === "Hood River Event Site", "the radius is straight-line miles from the rider; the same file serves any area");
   assert(names.includes("Sandy Cove Kite Beach") && !names.includes("Sandy Cove"), "a tagged launch wins over the beach it sits on (0.75 mi de-dup)");
   assert(names.includes("Kite launch"), "an unnamed kitesurf node is kept as 'Kite launch'");
   assert(names.includes("South Strand") && names.includes("Border Field Beach"), "ways and relations use their centre");
@@ -80,9 +82,9 @@ function sandbox(net = {}) {
   assert(sc.kind === "Kite spot" && sc.osm === "n101" && sc.notes === "OpenStreetMap: kitesurfing, windsurfing · sand surface" && sc.mi === 0, "kind, OSM id, notes and distance are filled in");
   assert(got.find(x => x.name === "Bay Windsurf Launch").kind === "Windsurf spot" && got.find(x => x.name === "South Strand").kind === "Beach", "windsurf-only is a 'Windsurf spot', natural=beach is a 'Beach'");
   assert(got.every((x, i) => i === 0 || x.mi >= got[i - 1].mi), "sorted by distance");
-  const many = S.parseOverpass(F.OVERPASS_MANY, F.HERE.lat, F.HERE.lon);
+  const many = S.pickAway(F.AWAY_FILE_MANY, F.HERE.lat, F.HERE.lon, 120);
   assert(many.length === 40 && many.filter(x => x.sport).length === 3, "capped at 40 with every sport-tagged spot kept");
-  assert(S.parseOverpass(F.OVERPASS_EMPTY, 0, 0).length === 0 && S.parseOverpass(null, 0, 0).length === 0, "empty and missing answers parse to nothing");
+  assert(S.pickAway(F.AWAY_FILE_EMPTY, 0, 0, 120).length === 0 && S.pickAway(null, 0, 0, 120).length === 0 && S.pickAway({ spots: "junk" }, 0, 0, 120).length === 0, "empty, missing and malformed files pick nothing");
   const spot = S.toAwaySpot(sc);
   assert(spot.id === "a-n101" && spot.auto === true && spot.facing === null && JSON.stringify(spot.dir) === JSON.stringify(S.sectorsFromFacing(0)) === false && JSON.stringify(spot.dir) === `{"best":[],"work":[[0,360]],"off":[]}` && spot.waves === true && spot.photo === false && spot.driveLO > 600, "toAwaySpot: a- id, auto, facing unknown, estimated drives from both houses");
 }
@@ -103,7 +105,7 @@ function sandbox(net = {}) {
   const both = S.facingFor({ lat: 32.7615, lon: -117.1 }, ways);
   assert(both && both.source === "water", "nearest shoreline wins (lake 0.03 mi vs coast 8 mi)");
   // applyFacing on parsed spots
-  const spots = S.parseOverpass(F.OVERPASS_SPOTS, F.HERE.lat, F.HERE.lon).map(S.toAwaySpot);
+  const spots = S.pickAway(F.AWAY_FILE, F.HERE.lat, F.HERE.lon, 52).map(S.toAwaySpot);
   const n = S.applyFacing(spots, F.OVERPASS_SHORE);
   const sc = spots.find(s => s.id === "a-n101"), bay = spots.find(s => s.id === "a-n107"), far = spots.find(s => s.id === "a-n103");
   assert(n >= 3 && Math.abs(sc.facing - 270) < 8 && sc.facingSrc === "coastline" && sc.waves === true, "Sandy Cove: faces W off the coastline, ocean beach");
@@ -118,7 +120,7 @@ function sandbox(net = {}) {
 /* ---------- 4. webcams and photos ---------- */
 {
   const S = sandbox();
-  const spots = S.parseOverpass(F.OVERPASS_SPOTS, F.HERE.lat, F.HERE.lon).map(S.toAwaySpot);
+  const spots = S.pickAway(F.AWAY_FILE, F.HERE.lat, F.HERE.lon, 52).map(S.toAwaySpot);
   const n = S.applyCams(spots, F.OVERPASS_CAMS);
   const sc = spots.find(s => s.id === "a-n101");
   assert(n >= 1 && sc.cam && sc.cam.url === "https://example.org/sandycove-cam" && sc.cam.name === "Sandy Cove surf cam" && sc.cam.mi < 1, "nearest linked webcam within 8 mi is attached");
@@ -128,11 +130,12 @@ function sandbox(net = {}) {
   assert(S.pickCommonsPhoto({}) === null, "no Commons hits -> null");
 }
 
-/* ---------- 5. discover(): found / empty / error, forecasts merged, cache ---------- */
+/* ---------- 5. discover(): found / empty / missing / error, forecasts merged, cache ---------- */
 {
   const calls = [];
   const S = sandbox({
-    fetch: async (url, body) => { calls.push(body.slice(0, 40)); if (/surveillance/.test(body)) return F.OVERPASS_CAMS; if (/coastline/.test(body)) return F.OVERPASS_SHORE; return F.OVERPASS_SPOTS; },
+    file: async () => F.AWAY_FILE,
+    fetch: async (url, body) => { calls.push(body.slice(0, 40)); if (/surveillance/.test(body)) return F.OVERPASS_CAMS; if (/coastline/.test(body)) return F.OVERPASS_SHORE; throw new Error("unexpected Overpass query: " + body.slice(0, 60)); },
     forecast: async list => ({ docs: list.map(s => ({ spotId: s.id, fetchedAt: "now", time: ["2026-10-17T12:00"], spd: [18] })), fetchedAt: "now" }),
   });
   S.maybeDiscover();
@@ -141,17 +144,18 @@ function sandbox(net = {}) {
   assert(["scoring", "done"].includes(S.away.status) && S.away.spots.length === 5, "the list is up (names, distances) before scores");
   await new Promise(r => setTimeout(r, 300));
   assert(S.away.status === "done" && S.away.spots.every(s => S.forecasts[s.id]), "done: one batched forecast call covered every discovered spot");
-  assert(Math.abs(S.away.spots.find(s => s.id === "a-n101").facing - 270) < 8, "facing applied before the final render");
+  assert(Math.abs(S.away.spots.find(s => s.id === "a-n101").facing - 270) < 8 && S.away.spots.find(s => s.id === "a-n101").facingSrc === "coastline", "facing applied from the background shoreline lookup");
+  assert(S.fileFetches === 1 && JSON.parse(S.localStorage.getItem("goc.awayspots")).spots.length === 9, "the catalogue was fetched once and cached in localStorage with a date");
   assert(S.renders >= 3, `rendered on search, on list, on scores (${S.renders} renders)`);
   const cached = JSON.parse(S.localStorage.getItem("goc.cache"));
   assert(cached.away && cached.away["32.77,-117.25"].spots.length === 5 && cached.docs.length === 5, "results and forecasts cached per area in goc.cache");
   await new Promise(r => setTimeout(r, 100));
   assert(S.away.spots.find(s => s.id === "a-n101").cam && S.away.spots.find(s => s.id === "a-n101").photoUrl === undefined, "background: webcam attached; photo lookup needs Commons (fetchJSON mocked away here)");
   // same place, a wider radius -> re-search; narrower -> no re-search
-  const before = calls.length; S.settings.radius = 60; S.maybeDiscover(); await new Promise(r => setTimeout(r, 50));
+  const before = calls.length, files = S.fileFetches; S.settings.radius = 60; S.maybeDiscover(); await new Promise(r => setTimeout(r, 50));
   assert(calls.length === before, "a smaller drive radius doesn't search again");
   S.settings.radius = 240; S.maybeDiscover(); await new Promise(r => setTimeout(r, 400));
-  assert(calls.length > before && S.away.radiusMi === 120, "a wider drive radius searches again");
+  assert(calls.length > before && S.away.radiusMi === 120 && S.fileFetches === files, "a wider drive radius searches again, from the cached catalogue (no refetch)");
   // keep a discovered spot: facing known -> saved at once, forecast carried over, no refetch
   await new Promise(r => setTimeout(r, 300));
   S.keepDiscovered("a-n101");
@@ -166,19 +170,54 @@ function sandbox(net = {}) {
   assert(S2.away.status === "done" && S2.away.spots.length === 4 && S2.away.note === "cached", "reopening the same area is instant from the cache");
 }
 {
-  const S = sandbox({ fetch: async () => F.OVERPASS_EMPTY, forecast: async () => ({ docs: [] }) });
+  const S = sandbox({ file: async () => F.AWAY_FILE_FAR, forecast: async () => ({ docs: [] }) });
   await S.discover(S.awayKey(), 52);
-  assert(S.away.status === "empty" && S.away.spots.length === 0 && /No spots found here yet/.test(S.awayBanner()) && /Add a spot by hand/.test(S.awayBanner()), "nothing on OSM: 'no spots found here yet' with add-by-hand");
+  assert(S.away.status === "empty" && S.away.spots.length === 0 && /No spots found here yet/.test(S.awayBanner()) && /list updated Oct 12/.test(S.awayBanner()) && /Add a spot by hand/.test(S.awayBanner()), "nothing in the catalogue near here: 'no spots found here yet' with the list date and add-by-hand");
 }
 {
-  const S = sandbox({ fetch: async () => ({ status: 504 }), forecast: async () => ({ docs: [] }) });
+  const S = sandbox({ file: async () => F.AWAY_FILE_EMPTY, forecast: async () => ({ docs: [] }) });
   await S.discover(S.awayKey(), 52);
-  assert(S.away.status === "error" && /Couldn't reach OpenStreetMap/.test(S.awayBanner()) && /504/.test(S.awayBanner()) && /Add a spot by hand/.test(S.awayBanner()), "Overpass down on both mirrors: clear error state with add-by-hand");
+  assert(S.away.status === "empty" && /No spots found here yet/.test(S.awayBanner()), "an empty catalogue: the same 'no spots found' banner");
+  assert(S.localStorage.getItem("goc.awayspots") === null, "an empty catalogue is not cached (the next search fetches again)");
 }
 {
-  const S = sandbox({ fetch: async (u, body) => /coastline/.test(body) ? F.OVERPASS_SHORE : F.OVERPASS_SPOTS });   // Open-Meteo down
+  const S = sandbox({ file: async () => ({ status: 404 }), forecast: async () => ({ docs: [] }) });
+  await S.discover(S.awayKey(), 52);
+  assert(S.away.status === "empty" && /No spots found here yet/.test(S.awayBanner()) && /Add a spot by hand/.test(S.awayBanner()), "away-spots.json missing (404, workflow not run yet): 'no spots found' banner, not an error");
+}
+{
+  const S = sandbox({ forecast: async () => ({ docs: [] }) });   // no network at all
+  await S.discover(S.awayKey(), 52);
+  assert(S.away.status === "error" && /Couldn't load the spot list/.test(S.awayBanner()) && /Add a spot by hand/.test(S.awayBanner()), "offline: clear error state with Search again and add-by-hand");
+  S.localStorage.setItem("goc.awayspots", JSON.stringify({ at: new Date().toISOString(), spots: F.AWAY_FILE.spots }));
+  await S.discover(S.awayKey(), 52);
+  assert(S.away.status === "done" && S.away.spots.length === 5, "offline with a cached catalogue: the list still comes up");
+  S.localStorage.setItem("goc.awayspots", JSON.stringify({ at: "2026-01-01T00:00:00Z", spots: F.AWAY_FILE.spots }));
+  await S.discover("x", 52);
+  assert(S.away.status === "error", "a catalogue cached more than 7 days ago is refetched, not reused");
+}
+{
+  const S = sandbox({ file: async () => F.AWAY_FILE, fetch: async (u, body) => { if (/coastline/.test(body)) return F.OVERPASS_SHORE; return { status: 504 }; } });   // Open-Meteo down
   await S.discover(S.awayKey(), 52);
   assert(S.away.status === "done" && S.away.note === "noforecast" && /Couldn't get a forecast/.test(S.awayBanner()) && /no forecast yet/.test(S.pendingRow(S.away.spots[0])), "Open-Meteo down: spots listed without scores and the banner says so");
+}
+{
+  // Overpass down: the list and scores land anyway; the spots stay "auto, facing unknown"
+  const S = sandbox({ file: async () => F.AWAY_FILE, fetch: async () => ({ status: 504 }), forecast: async list => ({ docs: list.map(s => ({ spotId: s.id, fetchedAt: "now", time: ["2026-10-17T12:00"], spd: [18] })) }) });
+  await S.discover(S.awayKey(), 52);
+  await new Promise(r => setTimeout(r, 50));
+  assert(S.away.status === "done" && S.away.spots.length === 5 && S.away.spots.every(s => S.forecasts[s.id]) && S.away.spots.every(s => s.facing === null && JSON.stringify(s.dir) === `{"best":[],"work":[[0,360]],"off":[]}`), "Overpass down on both mirrors: scored anyway, every spot 'facing unknown', no error state");
+  assert(/5 spots within 52 mi/.test(S.awayBanner()) && /list updated Oct 12/.test(S.awayBanner()), "banner shows the count and the catalogue date");
+}
+{
+  // Overpass slow: scores never wait for the shoreline; facing lands later and re-renders once
+  let release; const slow = new Promise(r => { release = r; });
+  const S = sandbox({ file: async () => F.AWAY_FILE, fetch: async (u, body) => { if (/coastline/.test(body)) { await slow; return F.OVERPASS_SHORE; } return F.OVERPASS_CAMS; }, forecast: async list => ({ docs: list.map(s => ({ spotId: s.id, fetchedAt: "now", time: ["2026-10-17T12:00"], spd: [18] })) }) });
+  await S.discover(S.awayKey(), 52);
+  assert(S.away.status === "done" && S.away.spots.every(s => s.facing === null), "done with scores while the shoreline lookup is still out");
+  const renders = S.renders; release(); await new Promise(r => setTimeout(r, 50));
+  assert(Math.abs(S.away.spots.find(s => s.id === "a-n101").facing - 270) < 8 && S.renders === renders + 1 && JSON.parse(S.localStorage.getItem("goc.cache")).away["32.77,-117.25"].spots.find(s => s.id === "a-n101").facing !== null, "late shoreline answer: facing applied, one re-render, cache updated");
+  assert(S.away.spots.find(s => s.id === "a-n101").cam, "then the webcam lookup ran");
 }
 {
   const S = sandbox({ json: async () => F.NOMINATIM });

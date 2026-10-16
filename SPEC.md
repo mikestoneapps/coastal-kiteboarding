@@ -85,7 +85,7 @@ Starter set: 15 spots — Gorge (Stevenson, Hood River Sandbar, Rufus), North Co
 
 Triggered when the chosen home base is outside the home region (or GPS says so).
 
-1. **Spot search** (~1–2 s): query OpenStreetMap (Overpass) for `sport=kitesurfing|kiteboarding|windsurfing` plus named beaches within the drive radius (haversine × 1.35 road factor ÷ 47 mph). The list renders immediately with names, distances and neutral tiles. If OSM tagging is thin in an area, named beaches are the fallback catalogue — verify coverage in a few US regions during the build.
+1. **Spot search** (~1–2 s): filter a precomputed OpenStreetMap catalogue (`away-spots.json`, refreshed weekly by a GitHub Actions job; `sport=kitesurfing|kiteboarding|windsurfing` worldwide plus named beaches in the US, Canada and Mexico) to the drive radius (haversine × 1.35 road factor ÷ 47 mph). Querying Overpass from the browser was tried first and dropped: public servers take 30+ s or fail. The list renders immediately with names, distances and neutral tiles. If OSM tagging is thin in an area, named beaches are the fallback catalogue — verify coverage in a few US regions during the build.
 2. **Forecasts** (~1–3 s): one batched Open-Meteo call for all coordinates (the API accepts multiple lat/lon per request). Scores appear and the list re-sorts once.
 3. **Direction rules** inferred from coastline orientation; rows marked **auto** so he knows they're inferred.
 4. **Photos** load in the background (§6). Never re-sort for a photo.
