@@ -14,12 +14,16 @@
 //   PUT    /v1/push                body {subscription}    add/replace this device's subscription (by endpoint)
 //   DELETE /v1/push                body {endpoint}        remove one subscription
 //   GET    /v1/push/vapid          -> {publicKey}         no auth; 404 until VAPID_PUBLIC_KEY is set
+//   PUT    /v1/photo/<spotId>      body: the JPEG itself (Content-Type image/jpeg, 100 KB max): the rider's own photo for a spot
+//   GET    /v1/photo/<spotId>      -> image/jpeg | 404    other linked devices fetch it in the background
+//   DELETE /v1/photo/<spotId>      "Remove photo"
 //
 // Job routes (Authorization: Bearer <ADMIN_TOKEN>; 404 until the ADMIN_TOKEN secret exists):
 //   GET    /v1/admin/riders        -> {riders:[{id, settings, updatedAt, subs, state}]} riders with >=1 subscription
 //   PUT    /v1/admin/riders/<id>   body {subs?, state?}   write back pruned subscriptions / alert state
 //
-// KV keys per rider hash h: s:h settings, p:h push subscriptions, a:h alert state ("already alerted").
+// KV keys per rider hash h: s:h settings, p:h push subscriptions, a:h alert state ("already alerted"),
+// ph:h:<spotId> the rider's own photo for that spot (binary JPEG; which spots have one is listed in settings.photos).
 // Bindings (wrangler.toml): SETTINGS (KV namespace). Vars: ALLOWED_ORIGINS (CORS, comma-separated),
 // VAPID_PUBLIC_KEY. Secret: ADMIN_TOKEN. See docs/SETUP-SYNC.md.
 
@@ -27,6 +31,8 @@ const DEFAULT_ORIGINS = ["https://mikestoneapps.github.io", "http://localhost:80
 const MAX_BODY = 256 * 1024;   // settings are a few KB; this is a generous ceiling
 const MIN_KEY = 32;
 const MAX_SUBS = 10;           // devices per rider
+const MAX_PHOTO = 100 * 1024;  // bytes per rider photo; the page resizes to 480×320 JPEG (about 40 KB) before uploading
+const SPOT_ID = /^\/v1\/photo\/([a-z0-9][a-z0-9_-]{0,47})$/;
 
 export default {
   async fetch(request, env) {
@@ -47,13 +53,15 @@ export default {
 
     if (path.startsWith("/v1/admin/")) return admin(request, env, path, cors);
 
-    if (path !== "/v1/settings" && path !== "/v1/push") return json({ error: "not found" }, 404, cors);
+    const photo = path.match(SPOT_ID);
+    if (path !== "/v1/settings" && path !== "/v1/push" && !photo) return json({ error: "not found" }, 404, cors);
 
     const key = bearer(request);
     if (!key || key.length < MIN_KEY) return json({ error: "missing or short sync key" }, 401, cors);
     const h = await sha256(key);
 
     if (path === "/v1/settings") return settingsRoute(request, env, "s:" + h, cors);
+    if (photo) return photoRoute(request, env, "ph:" + h + ":" + photo[1], cors);
     return pushRoute(request, env, "p:" + h, cors);
   }
 };
@@ -106,6 +114,31 @@ async function pushRoute(request, env, kv, cors) {
     const next = subs.filter(x => x.endpoint !== body.endpoint);
     if (next.length) await env.SETTINGS.put(kv, JSON.stringify(next)); else await env.SETTINGS.delete(kv);
     return json({ ok: true, count: next.length }, 200, cors);
+  }
+  return json({ error: "method not allowed" }, 405, cors);
+}
+
+async function photoRoute(request, env, kv, cors) {
+  // The rider's own photo for one spot: stored as the JPEG bytes the page produced, served back as-is.
+  if (request.method === "GET") {
+    const buf = await env.SETTINGS.get(kv, "arrayBuffer");
+    if (!buf) return json({ error: "no photo" }, 404, cors);
+    return new Response(buf, { status: 200, headers: { ...cors, "Content-Type": "image/jpeg", "Content-Length": String(buf.byteLength) } });
+  }
+  if (request.method === "PUT") {
+    const len = +(request.headers.get("Content-Length") || 0);
+    if (len > MAX_PHOTO) return json({ error: "too large" }, 413, cors);
+    if (!/^image\/jpeg/i.test(request.headers.get("Content-Type") || "")) return json({ error: "expected image/jpeg" }, 400, cors);
+    const buf = await request.arrayBuffer();
+    if (buf.byteLength > MAX_PHOTO) return json({ error: "too large" }, 413, cors);
+    const b = new Uint8Array(buf);
+    if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8 || b[2] !== 0xff) return json({ error: "not a jpeg" }, 400, cors);
+    await env.SETTINGS.put(kv, buf);
+    return json({ ok: true, bytes: buf.byteLength }, 200, cors);
+  }
+  if (request.method === "DELETE") {
+    await env.SETTINGS.delete(kv);
+    return json({ ok: true }, 200, cors);
   }
   return json({ error: "method not allowed" }, 405, cors);
 }

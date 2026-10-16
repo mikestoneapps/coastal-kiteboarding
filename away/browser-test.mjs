@@ -24,11 +24,31 @@ function serve(dir) {
 }
 // Deterministic forecast: W wind 18g22 at every point, 25 kn at point index 1 (so the ranking is stable and non-trivial).
 const forecastFor = n => F.openMeteo(n, (i, h) => ({ spd: i === 1 ? 25 : 18, gst: i === 1 ? 30 : 22, dir: h >= 12 && h <= 17 ? 290 : 270 }));
+const SYNC_URL = "https://sync.test.workers.dev", SYNC_KEY = "k".repeat(40);
+const syncStore = () => ({ doc: null, photos: {}, log: [] });   // one per "rider": pass the same object to every device's mock
 function mock(page, opts = {}) {
   const log = [];
   page.route(/.*/, async route => {
-    const u = route.request().url(), body = route.request().postData() || "";
-    const json = (o, status = 200) => route.fulfill({ status, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(o) });
+    const u = route.request().url(), body = route.request().postData() || "", method = route.request().method();
+    const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, PUT, DELETE, OPTIONS", "access-control-allow-headers": "Authorization, Content-Type" };
+    const json = (o, status = 200) => route.fulfill({ status, contentType: "application/json", headers: CORS, body: JSON.stringify(o) });
+    if (u.startsWith(SYNC_URL)) {   // the settings-sync Worker, as sync/worker.js answers (settings newest-wins via 409; photos as bytes)
+      const S = opts.sync; if (!S) return route.abort();
+      const path = new URL(u).pathname, auth = route.request().headers()["authorization"] || "";
+      if (method === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+      if (auth !== "Bearer " + SYNC_KEY) return json({ error: "unauthorized" }, 401);
+      S.log.push(method + " " + path);
+      if (path === "/v1/settings") {
+        if (method === "GET") return S.doc ? json(S.doc) : json({ empty: true }, 404);
+        const b = JSON.parse(body); if (S.doc && S.doc.updatedAt !== (b.base ?? null)) return json(S.doc, 409);
+        S.doc = { settings: b.settings, updatedAt: b.updatedAt }; return json({ ok: true, updatedAt: b.updatedAt });
+      }
+      const m = path.match(/^\/v1\/photo\/([a-z0-9][a-z0-9_-]{0,47})$/); if (!m) return json({ error: "not found" }, 404);
+      if (method === "PUT") { const buf = route.request().postDataBuffer(); const ct = route.request().headers()["content-type"] || ""; if (!/^image\/jpeg/.test(ct)) return json({ error: "expected image/jpeg" }, 400); if (buf.length > 100 * 1024) return json({ error: "too large" }, 413); S.photos[m[1]] = buf; S.log.push("photo bytes " + buf.length + " " + ct); return json({ ok: true, bytes: buf.length }); }
+      if (method === "GET") return S.photos[m[1]] ? route.fulfill({ status: 200, contentType: "image/jpeg", headers: CORS, body: S.photos[m[1]] }) : json({ error: "no photo" }, 404);
+      if (method === "DELETE") { delete S.photos[m[1]]; return json({ ok: true }); }
+      return json({ error: "method not allowed" }, 405);
+    }
     if (/\/obs\.json/.test(u)) return json({ obs: {} });   // station readings arrive at their own pace; keep the comparison deterministic
     if (/\/away-spots\.json/.test(u) && !REAL_FILE) {
       log.push("away-spots.json");
@@ -40,7 +60,7 @@ function mock(page, opts = {}) {
     if (u.startsWith("http://127.0.0.1")) return route.continue();
     if (LIVE && !/fonts\.|api\.weather\.gov/.test(u)) return route.continue();
     log.push(u.split("?")[0] + (body ? " " + decodeURIComponent(body.replace(/^data=/, "")).slice(0, 200) : ""));
-    if (/api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json(forecastFor(n)); }
+    if (/api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json((opts.forecast || forecastFor)(n)); }
     if (/marine-api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json(F.marine(n)); }
     if (/overpass/.test(u)) { if (opts.overpass === "down") return json({}, 504); if (opts.overpass === "slow") await new Promise(r => setTimeout(r, 4000)); if (/surveillance/.test(body)) return json(F.OVERPASS_CAMS); if (/coastline/.test(body)) return json(F.OVERPASS_SHORE); return json({}, 400); }
     if (/commons\.wikimedia\.org/.test(u)) return json(F.COMMONS);
@@ -51,8 +71,9 @@ function mock(page, opts = {}) {
   return log;
 }
 async function newPage(browser, url, opts) {
-  const ctx = await browser.newContext({ viewport: { width: 420, height: 860 }, geolocation: opts && opts.geo, permissions: opts && opts.geo ? ["geolocation"] : [] });
+  const ctx = await browser.newContext({ viewport: { width: (opts && opts.width) || 420, height: 860 }, geolocation: opts && opts.geo, permissions: opts && opts.geo ? ["geolocation"] : [] });
   const page = await ctx.newPage();
+  if (opts && opts.init) await page.addInitScript(opts.init);
   const errors = []; page.on("pageerror", e => errors.push(String(e))); page.on("console", m => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });   // aborted fonts/NWS requests are expected offline
   const log = mock(page, opts);
   await page.goto(url);
@@ -88,8 +109,13 @@ try {
       for (const k of Object.keys(theirs)) { const same = mine[k] === theirs[k]; let diff = ""; if (!same) { const A = theirs[k].split("\n"), B = mine[k].split("\n"); for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) { diff += `\n  line ${i}: baseline ${JSON.stringify(A[i])} / now ${JSON.stringify(B[i])}`; if (diff.length > 1500) break; } } assert(same, `home mode ${k} identical to the baseline page` + diff); }
       await b.ctx.close();
     } else console.log("(no BASELINE_DIR: skipped the identical-to-baseline comparison)");
-    // "Add a spot" at home: the sheet finds a place by name; the kept spot shows in Rider and can be removed there
-    assert((await text(page, "#openKeep")) === "Add a spot", "the button under the list reads 'Add a spot'");
+    // Two buttons under the list. "Look up a new spot": the sheet finds a place by name; the kept spot shows in Rider and can be removed there
+    assert((await text(page, "#openKeep")) === "Look up a new spot" && (await text(page, "#openHere")) === "This spot is killer", "two buttons under the list: 'Look up a new spot' and 'This spot is killer'");
+    await page.click("#openHere"); await page.waitForSelector("#ksKeep");
+    assert(/^This spot is killer/.test(await text(page, "#sheet h2")) && (await page.locator("#ksname").count()) === 1 && (await page.locator("#ksface button").count()) === 8, "'This spot is killer' opens the same sheet (name, location, facing)");
+    await page.waitForFunction(() => /Couldn't get your location/.test(document.getElementById("ksLLNote")?.textContent || ""), null, { timeout: 10000 });
+    assert((await page.locator("#ksFindBox").isVisible()) && (await page.inputValue("#ksll")) === "", "location refused: says so and offers the place search instead");
+    await page.click("#closeSheet");
     await page.click("#openKeep"); await page.waitForSelector("#ksKeep");
     assert(/^Add a spot/.test(await text(page, "#sheet h2")) && (await page.locator("#ksq").count()) === 1 && (await page.locator("#ksGPS").count()) === 1 && (await page.locator("#ksMap").isHidden()) && (await page.getAttribute("#ksll", "readonly")) !== null, "Add a spot: place search, Use my location, read-only coordinates, no map link yet");
     await page.click("#ksKeep"); await page.waitForTimeout(100);
@@ -101,6 +127,9 @@ try {
     let kept = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).kept);
     assert(kept.length === 1 && kept[0].id === "k-san-diego" && kept[0].lat === 32.7174 && kept[0].facing === 270 && kept[0].driveLO > 600 && kept[0].driveBC > 600 && kept[0].kept === true, "added like a kept spot: k- id, facing, estimated drives from both houses");
     assert(/more spots? beyond/.test(await text(page, "#beyond")), "it sits beyond the home radius, counted like any other spot");
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem("goc.settings")).kept[0]?.photoChecked, null, { timeout: 10000 }).catch(() => {});
+    kept = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).kept);
+    assert(log.some(l => /commons\.wikimedia\.org/.test(l)) && kept[0].photoChecked && /kites\.jpg$/.test(kept[0].photoUrl || "") && /Jane Doe/.test(kept[0].photoCredit), "a spot added at home gets the background Commons lookup: scored pick saved with its credit");
     await page.click("#openSettings"); await page.waitForSelector("#riderKept button");
     assert(/San Diego ×/.test(await text(page, "#riderKept")), "Rider sheet lists the added spot");
     await page.click("#riderKept button"); await page.waitForTimeout(200);
@@ -114,6 +143,72 @@ try {
     assert((await page.locator("#away").count()) === 0 && !log.some(l => /overpass|away-spots/.test(l)), "Elsewhere = Newport (within 150 mi): no discovery, curated list as before");
     assert(errors.length === 0, "still no page errors");
     await ctx.close();
+  }
+
+  /* ---------- 1b. narrow phone (390 px): tile layout, "This spot is killer", the rider's own photos ---------- */
+  {
+    const longKept = () => { if (localStorage.getItem("goc.settings")) return; localStorage.setItem("goc.settings", JSON.stringify({ home: "LO", radius: 150, sort: "score", kept: [{ id: "k-long", name: "Mission Bay South Shores launch beach", region: "Kept", lat: 45.60, lon: -122.40, plat: 45.60, plon: -122.40, facing: 270, dir: { best: [[240, 300]], work: [[190, 350]], off: [[40, 140]] }, waves: true, pass: false, photo: false, notes: "", parking: "", driveLO: 45, driveBC: 120, kept: true, photoChecked: "2026-10-16T00:00:00Z", addedAt: "2026-10-16T00:00:00Z" }] })); };
+    const sync = syncStore();
+    const gusty = n => F.openMeteo(n, (i, h) => ({ spd: 12 + (i % 3), gst: 22 + (i % 5), dir: 280 }));   // light and gusty: every row carries a reason chip
+    const { page, errors, log, ctx } = await newPage(browser, url, { width: 390, geo: { latitude: 45.61, longitude: -122.41 }, init: longKept, sync, forecast: gusty });
+    await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(800);
+    const tiles = await page.evaluate(() => [...document.querySelectorAll(".row")].map(r => { const h = r.querySelector(".head").getBoundingClientRect(), p = r.querySelector(".pic").getBoundingClientRect(), n = r.querySelector(".name").getBoundingClientRect(), chips = [...r.querySelectorAll(".wind .chip")], last = chips.length ? chips[chips.length - 1].getBoundingClientRect() : null; return { id: r.id, head: h.height, pic: p.height, nameLines: Math.round(n.height / 18), clear: last ? h.bottom - last.bottom : null, picTop: p.top - h.top, picBottom: h.bottom - p.bottom }; }));
+    const wrapped = tiles.filter(t => t.nameLines > 1), chipped = tiles.filter(t => t.clear != null);
+    assert(tiles.length >= 10 && wrapped.length >= 2 && chipped.length >= 5, `390 px: ${tiles.length} rows, ${wrapped.length} with a wrapped name, ${chipped.length} with a chip`);
+    assert(tiles.every(t => t.head >= 72), "every tile is at least 72 px tall");
+    assert(chipped.every(t => t.clear >= 8), "the status chip always clears the tile's bottom edge by 8 px or more (was flush when the name wrapped): " + chipped.map(t => `${t.id} ${Math.round(t.clear)}`).join(", "));
+    assert(tiles.every(t => Math.abs(t.pic - t.head) < 1 && Math.abs(t.picTop) < 1 && Math.abs(t.picBottom) < 1), "the photo stretches to the tile's full height on every row");
+    assert((await page.locator('#row-k-long .pic img').count()) === 0 && (await page.locator('#row-k-long .pic.nophoto').count()) === 1, "the long-named kept spot (Commons already checked, nothing found) keeps the neutral tile");
+    assert(errors.length === 0, "390 px: no page errors (" + errors.join(" | ") + ")");
+
+    // "This spot is killer" with location allowed: coordinates land by themselves, cursor in the name
+    await page.click("#openHere"); await page.waitForSelector("#ksKeep");
+    await page.waitForFunction(() => document.getElementById("ksll")?.value === "45.61, -122.41", null, { timeout: 10000 });
+    assert((await page.locator("#ksFindBox").isHidden()) && (await page.locator("#ksMap").isVisible()) && (await page.evaluate(() => document.activeElement && document.activeElement.id)) === "ksname" && /Your location now/.test(await text(page, "#ksLLNote")), "'This spot is killer': phone location filled in, Check on map ready, name field focused, no place search");
+    await page.keyboard.type("Killer Beach"); await page.click('#ksface button[data-deg="315"]'); await page.click("#ksKeep");
+    await page.waitForSelector("#row-k-killer-beach", { timeout: 10000 });
+    let kb = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).kept.find(k => k.id === "k-killer-beach"));
+    assert(kb && kb.lat === 45.61 && kb.lon === -122.41 && kb.facing === 315 && kb.kept === true, "saved at the phone's coordinates with the chosen facing, scored like any other spot");
+    await page.waitForFunction(() => document.querySelector('#row-k-killer-beach .pic img[src*="kites.jpg"]'), null, { timeout: 10000 }).catch(() => {});
+    assert((await page.locator('#row-k-killer-beach .pic img[src*="kites.jpg"]').count()) === 1, "its Commons photo lands in the tile in the background, no re-sort");
+
+    // the rider's own photo: picked from the camera roll, shrunk to 480×320 JPEG, cached in IndexedDB, uploaded through sync
+    await page.evaluate(() => { localStorage.setItem("goc.sync", JSON.stringify({ url: "https://sync.test.workers.dev", key: "k".repeat(40), remoteUpdatedAt: null })); });
+    await page.reload(); await page.waitForSelector(".row", { timeout: 20000 });
+    await page.waitForFunction(() => /Synced/.test((typeof syncState !== "undefined" && syncState.status) || ""), null, { timeout: 10000 });
+    assert(sync.doc && sync.doc.settings.kept.length === 2, "sync on: this device's settings (both kept spots) are the server copy");
+    const png = Buffer.from((await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 1600; c.height = 1200; const g = c.getContext("2d"); const gr = g.createLinearGradient(0, 0, 1600, 1200); gr.addColorStop(0, "#1b6ca8"); gr.addColorStop(1, "#f2d388"); g.fillStyle = gr; g.fillRect(0, 0, 1600, 1200); let x = 1; for (let i = 0; i < 4000; i++) { x = (x * 48271) % 2147483647; g.fillStyle = `hsl(${x % 360} 70% ${30 + x % 50}%)`; g.fillRect(x % 1600, (x >> 8) % 1200, 20 + x % 60, 20 + (x >> 4) % 60); } return c.toDataURL("image/png"); })).split(",")[1], "base64");
+    await page.click('button[data-open="stevenson"]'); await page.waitForSelector("#detail-stevenson .actions");
+    assert((await page.locator('#detail-stevenson [data-photo]').count()) === 1 && (await page.locator('#detail-stevenson [data-unphoto]').count()) === 0, "a curated spot's detail offers Use my photo (and no Remove photo yet)");
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('#detail-stevenson [data-photo]')]);
+    assert(!chooser.isMultiple() && (await page.getAttribute("#photoFile", "accept")) === "image/*", "Use my photo opens the phone's camera / photo picker (one image)");
+    await chooser.setFiles({ name: "beach.png", mimeType: "image/png", buffer: png });
+    await page.waitForFunction(() => document.querySelector('#row-stevenson .pic img')?.src.startsWith("blob:"), null, { timeout: 15000 });
+    const mine = await page.evaluate(async () => { const db = await new Promise((res, rej) => { const r = indexedDB.open("goc.photos", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); const rec = await new Promise((res, rej) => { const rq = db.transaction("photos").objectStore("photos").get("stevenson"); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); db.close(); if (!rec) return null; const bmp = await createImageBitmap(rec.blob); return { size: rec.blob.size, type: rec.blob.type, w: bmp.width, h: bmp.height, photos: JSON.parse(localStorage.getItem("goc.settings")).photos }; });
+    assert(mine && mine.type === "image/jpeg" && mine.w === 480 && mine.h === 320 && mine.size > 8 * 1024 && mine.size <= 48 * 1024 && mine.photos.stevenson, `shrunk to a 480×320 JPEG of ${mine && Math.round(mine.size / 1024)} KB, cached in IndexedDB, listed in settings.photos`);
+    assert((await page.locator('#row-stevenson .pic img').getAttribute("src")).startsWith("blob:") && (await page.locator('#detail-stevenson [data-unphoto]').count()) === 1, "the tile shows his photo instead of the built-in one; Remove photo appears");
+    await page.waitForFunction(() => document.querySelector('#hero .hpic img')?.src.startsWith("blob:") || !document.querySelector('#hero .hpic[data-spot="stevenson"]'), null, { timeout: 5000 });
+    await page.waitForTimeout(1500);
+    const up = sync.log.filter(l => /^PUT \/v1\/photo\/stevenson/.test(l)), bytes = sync.log.find(l => /^photo bytes/.test(l));
+    assert(up.length === 1 && bytes && +bytes.split(" ")[2] === mine.size && /image\/jpeg/.test(bytes) && sync.doc.settings.photos.stevenson, "uploaded once to the Worker as image/jpeg, and the settings copy lists it");
+    assert(errors.length === 0, "own photo: no page errors (" + errors.join(" | ") + ")");
+
+    // a second linked device fetches the missing photo in the background
+    const two = await newPage(browser, url, { width: 390, sync, init: () => { localStorage.setItem("goc.sync", JSON.stringify({ url: "https://sync.test.workers.dev", key: "k".repeat(40), remoteUpdatedAt: null })); } });
+    await two.page.waitForSelector(".row", { timeout: 20000 });
+    await two.page.waitForFunction(() => document.querySelector('#row-stevenson .pic img')?.src.startsWith("blob:"), null, { timeout: 15000 }).catch(() => {});
+    assert((await two.page.locator('#row-stevenson .pic img').getAttribute("src") || "").startsWith("blob:") && sync.log.filter(l => /^GET \/v1\/photo\/stevenson/.test(l)).length >= 1, "another linked device pulls the settings, sees the photo listed, fetches it in the background and shows it");
+    await two.page.waitForSelector("#row-k-killer-beach", { timeout: 10000 }).catch(() => {});
+    assert((await two.page.locator("#row-k-killer-beach").count()) === 1 && (await two.page.locator('#row-k-killer-beach .pic img[src*="kites.jpg"]').count()) === 1, "the kept spot and its Commons photo came along in the settings");
+    // Remove photo on the second device: gone from the Worker, and the first device drops it on its next sync
+    await two.page.click('button[data-open="stevenson"]'); await two.page.waitForSelector('#detail-stevenson [data-unphoto]');
+    await two.page.click('#detail-stevenson [data-unphoto]'); await two.page.waitForTimeout(2500);
+    assert(!sync.photos.stevenson && sync.log.some(l => /^DELETE \/v1\/photo\/stevenson/.test(l)) && !(sync.doc.settings.photos || {}).stevenson && (await two.page.locator('#row-stevenson .pic img').getAttribute("src")).endsWith("img/stevenson.jpg"), "Remove photo: deleted from the Worker, dropped from the settings list, built-in photo back");
+    await page.evaluate(() => syncPull());
+    await page.waitForFunction(() => (document.querySelector('#row-stevenson .pic img')?.src || "").endsWith("img/stevenson.jpg"), null, { timeout: 15000 }).catch(() => {});
+    assert((await page.locator('#row-stevenson .pic img').getAttribute("src")).endsWith("img/stevenson.jpg") && (await page.evaluate(() => Object.keys(riderPhotos).length)) === 0, "the first device drops it too on its next sync and restores the default");
+    assert(errors.length === 0 && two.errors.length === 0, "two devices: no page errors (" + errors.concat(two.errors).join(" | ") + ")");
+    await two.ctx.close(); await ctx.close();
   }
 
   /* ---------- 2. away mode by place name ---------- */
