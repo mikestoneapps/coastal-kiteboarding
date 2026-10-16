@@ -615,6 +615,7 @@ function keepSheet(pre){
     <div class="field"><label for="ksll">Location</label><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><input type="text" id="ksll" readonly placeholder="not set yet" value="${has?pre.lat+", "+pre.lon:""}" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);width:230px;max-width:100%"><a class="link" id="ksMap" href="${has?mapPointUrl(pre.lat,pre.lon):"#"}" target="_blank" rel="noopener"${has?"":" hidden"}>Check on map</a><button class="link" id="ksEdit" type="button">Edit</button></div><p id="ksLLNote" style="color:var(--muted);font-size:12px;margin:2px 0 0">${keep?"From OpenStreetMap.":here?"Getting your location…":"Filled in by the place search or your location. Edit to type coordinates from Google Maps instead."}</p></div>
     <div class="field"><label>Beach faces (toward the water)</label><div class="kites" id="ksface">${["N","NE","E","SE","S","SW","W","NW"].map((c,i)=>`<button data-deg="${i*45}" aria-pressed="${c==="W"}">${c}</button>`).join("")}</div></div>
     <ul class="check" style="margin:0"><li><input type="checkbox" id="kswaves" ${pre.waves===false?"":"checked"}><label for="kswaves">Ocean beach <small>(pull the surf forecast)</small></label></li></ul>
+    <div class="field"><label>Photo (optional)</label><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><img id="ksThumb" alt="" width="120" height="80" hidden style="border-radius:8px;object-fit:cover;border:1px solid var(--line);flex:none"><button class="btn" id="ksPhoto" type="button">Add a photo</button><button class="link" id="ksUnphoto" type="button" hidden>Remove</button></div><p style="color:var(--muted);font-size:12px;margin:2px 0 0">Your own, from the camera or photo library; it goes on the tile. Without one the tile gets a Wikimedia Commons photo of the place when there is a fitting one. Use my photo in the spot's detail changes it later.</p></div>
     <div class="actions" style="margin-top:8px"><button class="btn primary" id="ksKeep">${keep?"Keep this spot":"Add this spot"}</button></div>
     ${settings.kept.length?`<p style="color:var(--muted);font-size:12px;margin:12px 0 4px">Your spots · tap one to remove it:</p><div class="kites">${settings.kept.map(k=>`<button data-unkeep="${k.id}" title="Remove">${esc(k.name)} ×</button>`).join("")}</div>`:""}`);
   const ll=document.getElementById("ksll"), map=document.getElementById("ksMap"), llNote=document.getElementById("ksLLNote"), nameIn=document.getElementById("ksname");
@@ -636,12 +637,21 @@ function keepSheet(pre){
     navigator.geolocation.getCurrentPosition(p=>{ setLL(+p.coords.latitude.toFixed(4),+p.coords.longitude.toFixed(4)); if(gps) gps.textContent="Use my location"; llNote.textContent="Your location now. Check on map to be sure it is the beach, not the parking lot."; }, noFix, {enableHighAccuracy:true,timeout:12000,maximumAge:60000}); };
   if(gps) gps.onclick=locate;
   if(here){ locate(); nameIn.focus(); }
-  document.getElementById("ksKeep").onclick=()=>{ const name=nameIn.value.trim(); const p=parseLL(ll.value);
+  // Photo (optional): the same picker and resize as "Use my photo", done now so the thumbnail is the exact tile image; it is
+  // saved under the new spot's id on Save (IndexedDB, settings.photos, Worker upload when sync is on). Not required for anything.
+  let pendingPhoto=null, pendingUrl=null; const thumb=document.getElementById("ksThumb"), phBtn=document.getElementById("ksPhoto"), phRm=document.getElementById("ksUnphoto");
+  const setPending=blob=>{ if(pendingUrl) try{ URL.revokeObjectURL(pendingUrl); }catch(e){} pendingPhoto=blob; pendingUrl=blob?URL.createObjectURL(blob):null; if(pendingUrl) thumb.src=pendingUrl; else thumb.removeAttribute("src"); thumb.hidden=!blob; phRm.hidden=!blob; phBtn.textContent=blob?"Change photo":"Add a photo"; };
+  phBtn.onclick=()=>pickRiderPhoto(async f=>{ if(!phBtn.isConnected) return; phBtn.textContent="Resizing…";
+    try{ setPending(await shrinkPhoto(f)); }catch(e){ console.warn("photo",e); phBtn.textContent="Couldn't use that photo"; setTimeout(()=>{ if(phBtn.isConnected) phBtn.textContent=pendingPhoto?"Change photo":"Add a photo"; },3000); } });
+  phRm.onclick=()=>setPending(null);
+  document.getElementById("ksKeep").onclick=async()=>{ const name=nameIn.value.trim(); const p=parseLL(ll.value);
     if(!name){ nameIn.focus(); return; }
     if(!p){ llNote.textContent="Find the place by name or use your location first (or Edit and type the coordinates)."; (document.getElementById("ksq")||ll).focus(); return; }   // a bad coordinate would fail the batched forecast call for every spot
     const fb=host.querySelector('#ksface button[aria-pressed="true"]'); const facing=fb?+fb.dataset.deg:270;
     if(pre.carry&&pre.carry.forecastFrom) dropDiscovered(pre.carry.forecastFrom);
-    keepSpot({name,lat:p.lat,lon:p.lon,facing,waves:document.getElementById("kswaves").checked,...(pre.carry||{})}); closeSheet(); render(); };
+    const spot=keepSpot({name,lat:p.lat,lon:p.lon,facing,waves:document.getElementById("kswaves").checked,...(pre.carry||{})}); const blob=pendingPhoto; setPending(null); closeSheet();
+    if(blob){ try{ await saveRiderPhoto(spot.id,blob); }catch(e){ console.warn("photo",e); } }   // on the tile from its first paint; the spot is saved either way
+    render(); };
   host.querySelectorAll("#sheet [data-unkeep]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); unkeepSpot(b.dataset.unkeep); keepSheet(); });
 }
 const COMFORT_DEF=[["minWind","Minimum wind I'll go out for","kn",6,20,1],["maxWind","Maximum sustained wind","kn",18,40,1],["maxGust","Maximum gust","kn",18,45,1],["maxSurf","Maximum surf","ft",1,15,1],["minHours","Minimum session length","h",1,6,1]];
@@ -1269,14 +1279,14 @@ function bindSync(){
 })();
 
 /* ---------- rider photos (his own photo per spot, curated or added) ---------- */
-// "Use my photo" in a spot's detail opens the phone's camera or photo picker; the picture is resized here to the tile's
-// 480×320 JPEG (about 40 KB) and kept in IndexedDB keyed by spot id, so it survives the forecast cache and never reloads
-// from the network. With sync on it is also uploaded to the Worker (PUT /v1/photo/<spotId>, same sync-key auth), and the
+// "Use my photo" in a spot's detail (and "Add a photo" in the add-spot sheet, which saves it with the new spot) opens the
+// phone's camera or photo picker; the picture is resized here to the tile's 480×320 JPEG (about 40 KB) and kept in
+// IndexedDB keyed by spot id, so it survives the forecast cache and never reloads from the network. With sync on it is also uploaded to the Worker (PUT /v1/photo/<spotId>, same sync-key auth), and the
 // settings document lists which spots have one (settings.photos: spotId -> taken at), so other linked devices fetch the ones
 // they lack in the background. "Remove photo" drops it everywhere and the tile goes back to the built-in or Commons photo.
 const PHOTO_W=480, PHOTO_H=320, PHOTO_TARGET=48*1024, PHOTO_MAX=100*1024;   // the Worker refuses anything over PHOTO_MAX
 var riderPhotos={};            // spotId -> {url (object URL), updatedAt, synced}
-let photoTarget=null, photoSyncing=false, photoSyncAgain=false, photosReady=null;   // photosReady: the IndexedDB load, awaited before any sync
+let photoTarget=null, photoSyncing=false, photoSyncAgain=false, photosReady=null;   // photoTarget: spot id, or a function given the picked File (the add-spot sheet); photosReady: the IndexedDB load, awaited before any sync
 function photoDB(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open("goc.photos",1); }catch(e){ return rej(e); } r.onupgradeneeded=()=>{ r.result.createObjectStore("photos"); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error||new Error("IndexedDB")); r.onblocked=()=>rej(new Error("IndexedDB blocked")); }); }
 async function photoStore(mode, fn){
   // One transaction on the "photos" store; resolves with the request's result (or whatever fn returned) once it commits.
@@ -1310,18 +1320,21 @@ async function shrinkPhoto(file){
   if(blob.size>PHOTO_MAX) throw new Error("photo too large");
   return blob;
 }
-function pickRiderPhoto(id){ const inp=document.getElementById("photoFile"); if(!inp) return; photoTarget=id; inp.value=""; inp.click(); }
+function pickRiderPhoto(target){ const inp=document.getElementById("photoFile"); if(!inp) return; photoTarget=target; inp.value=""; inp.click(); }   // target: spot id, or a callback for the File
 function photoNote(id,t){ const b=document.querySelector(`[data-photo="${CSS.escape(id)}"]`); if(b) b.textContent=t; }
 document.getElementById("photoFile").onchange=async()=>{
-  const inp=document.getElementById("photoFile"); const f=inp.files&&inp.files[0], id=photoTarget; if(!f||!id) return;
+  const inp=document.getElementById("photoFile"); const f=inp.files&&inp.files[0], id=photoTarget; photoTarget=null; if(!f||!id) return;
+  if(typeof id==="function"){ id(f); return; }
   photoNote(id,"Saving photo…");
   try{ await setRiderPhoto(id,f); }catch(e){ console.warn("photo",e); photoNote(id,"Couldn't use that photo"); setTimeout(()=>photoNote(id,"Use my photo"),3000); }
 };
-async function setRiderPhoto(id, file){
-  const blob=await shrinkPhoto(file); const updatedAt=new Date().toISOString();
+async function setRiderPhoto(id, file){ await saveRiderPhoto(id, await shrinkPhoto(file)); render(); }
+async function saveRiderPhoto(id, blob){
+  // A shrunk JPEG for spot id: IndexedDB first, then shown, listed in settings.photos and uploaded when sync is on.
+  const updatedAt=new Date().toISOString();
   await photoStore("readwrite",st=>st.put({blob,updatedAt,synced:false},id));
   photoShow(id,blob,updatedAt,false);
-  settings.photos=settings.photos||{}; settings.photos[id]=updatedAt; saveSettings(); render();
+  settings.photos=settings.photos||{}; settings.photos[id]=updatedAt; saveSettings();
   photoSync();
 }
 async function removeRiderPhoto(id){
