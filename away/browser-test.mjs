@@ -177,14 +177,16 @@ try {
     await page.reload(); await page.waitForSelector(".row", { timeout: 20000 });
     await page.waitForFunction(() => /Synced/.test((typeof syncState !== "undefined" && syncState.status) || ""), null, { timeout: 10000 });
     assert(sync.doc && sync.doc.settings.kept.length === 2, "sync on: this device's settings (both kept spots) are the server copy");
-    const png = Buffer.from((await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 1600; c.height = 1200; const g = c.getContext("2d"); const gr = g.createLinearGradient(0, 0, 1600, 1200); gr.addColorStop(0, "#1b6ca8"); gr.addColorStop(1, "#f2d388"); g.fillStyle = gr; g.fillRect(0, 0, 1600, 1200); let x = 1; for (let i = 0; i < 4000; i++) { x = (x * 48271) % 2147483647; g.fillStyle = `hsl(${x % 360} 70% ${30 + x % 50}%)`; g.fillRect(x % 1600, (x >> 8) % 1200, 20 + x % 60, 20 + (x >> 4) % 60); } return c.toDataURL("image/png"); })).split(",")[1], "base64");
+    const pngOf = async seed => Buffer.from((await page.evaluate(s => { const c = document.createElement("canvas"); c.width = 1600; c.height = 1200; const g = c.getContext("2d"); const gr = g.createLinearGradient(0, 0, 1600, 1200); gr.addColorStop(0, "#1b6ca8"); gr.addColorStop(1, "#f2d388"); g.fillStyle = gr; g.fillRect(0, 0, 1600, 1200); let x = s; for (let i = 0; i < 4000; i++) { x = (x * 48271) % 2147483647; g.fillStyle = `hsl(${x % 360} 70% ${30 + x % 50}%)`; g.fillRect(x % 1600, (x >> 8) % 1200, 20 + x % 60, 20 + (x >> 4) % 60); } return c.toDataURL("image/png"); }, seed)).split(",")[1], "base64");   // a busy "camera" picture: compresses like a real one
+    const png = await pngOf(1);
+    const stored = (pg, id) => pg.evaluate(async id => { const db = await new Promise((res, rej) => { const r = indexedDB.open("goc.photos", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); const rec = await new Promise((res, rej) => { const rq = db.transaction("photos").objectStore("photos").get(id); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); db.close(); if (!rec) return null; const bmp = await createImageBitmap(rec.blob); return { size: rec.blob.size, type: rec.blob.type, w: bmp.width, h: bmp.height, updatedAt: rec.updatedAt, photos: JSON.parse(localStorage.getItem("goc.settings")).photos || {} }; }, id);   // the IndexedDB record for a spot
     await page.click('button[data-open="stevenson"]'); await page.waitForSelector("#detail-stevenson .actions");
     assert((await page.locator('#detail-stevenson [data-photo]').count()) === 1 && (await page.locator('#detail-stevenson [data-unphoto]').count()) === 0, "a curated spot's detail offers Use my photo (and no Remove photo yet)");
     const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click('#detail-stevenson [data-photo]')]);
     assert(!chooser.isMultiple() && (await page.getAttribute("#photoFile", "accept")) === "image/*", "Use my photo opens the phone's camera / photo picker (one image)");
     await chooser.setFiles({ name: "beach.png", mimeType: "image/png", buffer: png });
     await page.waitForFunction(() => document.querySelector('#row-stevenson .pic img')?.src.startsWith("blob:"), null, { timeout: 15000 });
-    const mine = await page.evaluate(async () => { const db = await new Promise((res, rej) => { const r = indexedDB.open("goc.photos", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); const rec = await new Promise((res, rej) => { const rq = db.transaction("photos").objectStore("photos").get("stevenson"); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); db.close(); if (!rec) return null; const bmp = await createImageBitmap(rec.blob); return { size: rec.blob.size, type: rec.blob.type, w: bmp.width, h: bmp.height, photos: JSON.parse(localStorage.getItem("goc.settings")).photos }; });
+    const mine = await stored(page, "stevenson");
     assert(mine && mine.type === "image/jpeg" && mine.w === 480 && mine.h === 320 && mine.size > 8 * 1024 && mine.size <= 48 * 1024 && mine.photos.stevenson, `shrunk to a 480×320 JPEG of ${mine && Math.round(mine.size / 1024)} KB, cached in IndexedDB, listed in settings.photos`);
     assert((await page.locator('#row-stevenson .pic img').getAttribute("src")).startsWith("blob:") && (await page.locator('#detail-stevenson [data-unphoto]').count()) === 1, "the tile shows his photo instead of the built-in one; Remove photo appears");
     await page.waitForFunction(() => document.querySelector('#hero .hpic img')?.src.startsWith("blob:") || !document.querySelector('#hero .hpic[data-spot="stevenson"]'), null, { timeout: 5000 });
@@ -193,6 +195,42 @@ try {
     assert(up.length === 1 && bytes && +bytes.split(" ")[2] === mine.size && /image\/jpeg/.test(bytes) && sync.doc.settings.photos.stevenson, "uploaded once to the Worker as image/jpeg, and the settings copy lists it");
     assert(errors.length === 0, "own photo: no page errors (" + errors.join(" | ") + ")");
 
+    // "This spot is killer" with a photo: picked in the sheet (same picker and resize), previewed, saved with the spot on Save
+    await page.click("#openHere"); await page.waitForSelector("#ksKeep");
+    await page.waitForFunction(() => document.getElementById("ksll")?.value === "45.61, -122.41", null, { timeout: 10000 });
+    assert((await page.locator("#ksThumb").isHidden()) && (await text(page, "#ksPhoto")) === "Add a photo" && (await page.locator("#ksUnphoto").isHidden()), "the add-spot sheet offers Add a photo (optional): no thumbnail, no Remove yet");
+    await page.fill("#ksname", "Photo Beach"); await page.click('#ksface button[data-deg="270"]');
+    let [ch2] = await Promise.all([page.waitForEvent("filechooser"), page.click("#ksPhoto")]);
+    assert(!ch2.isMultiple() && (await page.getAttribute("#photoFile", "accept")) === "image/*", "Add a photo opens the same camera / photo picker (one image)");
+    await ch2.setFiles({ name: "beach.png", mimeType: "image/png", buffer: png });
+    await page.waitForFunction(() => document.getElementById("ksThumb")?.src.startsWith("blob:") && !document.getElementById("ksThumb").hidden, null, { timeout: 15000 });
+    const th = await page.evaluate(async () => { const im = document.getElementById("ksThumb"); const b = await (await fetch(im.src)).blob(); const bmp = await createImageBitmap(b); return { w: bmp.width, h: bmp.height, type: b.type, size: b.size, btn: document.getElementById("ksPhoto").textContent, rm: !document.getElementById("ksUnphoto").hidden, kept: JSON.parse(localStorage.getItem("goc.settings")).kept.length }; });
+    assert(th.w === 480 && th.h === 320 && th.type === "image/jpeg" && th.size > 8 * 1024 && th.size <= 48 * 1024 && th.btn === "Change photo" && th.rm && th.kept === 2, `the thumbnail is the shrunk 480×320 JPEG (${Math.round(th.size / 1024)} KB), Change photo and Remove offered, nothing saved yet`);
+    await page.click("#ksUnphoto");
+    assert((await page.locator("#ksThumb").isHidden()) && (await text(page, "#ksPhoto")) === "Add a photo" && (await page.locator("#ksUnphoto").isHidden()), "Remove in the sheet drops the pending photo (the spot could still be saved without one)");
+    [ch2] = await Promise.all([page.waitForEvent("filechooser"), page.click("#ksPhoto")]); await ch2.setFiles({ name: "beach.png", mimeType: "image/png", buffer: png });
+    await page.waitForFunction(() => document.getElementById("ksThumb")?.src.startsWith("blob:"), null, { timeout: 15000 });
+    await page.click("#ksKeep"); await page.waitForSelector("#row-k-photo-beach", { timeout: 10000 });
+    assert((await page.locator("#sheet").count()) === 0 && (await page.locator('#row-k-photo-beach .pic img').getAttribute("src") || "").startsWith("blob:"), "Save: the sheet closes and the new tile shows his photo from its first paint");
+    const pb = await stored(page, "k-photo-beach");
+    assert(pb && pb.type === "image/jpeg" && pb.w === 480 && pb.h === 320 && pb.size === th.size && pb.photos["k-photo-beach"] === pb.updatedAt, "kept in IndexedDB under the new spot's id (the very bytes previewed) and listed in settings.photos");
+    await page.waitForFunction(() => document.querySelector('#row-k-photo-beach .pic img')?.src.startsWith("blob:"), null, { timeout: 10000 });
+    await page.waitForTimeout(2500);
+    const up2 = sync.log.filter(l => /^PUT \/v1\/photo\/k-photo-beach/.test(l));
+    assert(up2.length === 1 && sync.photos["k-photo-beach"] && sync.photos["k-photo-beach"].length === pb.size && sync.doc.settings.photos["k-photo-beach"] && sync.doc.settings.kept.some(k => k.id === "k-photo-beach" && k.facing === 270), "uploaded once to the Worker as image/jpeg; the settings copy carries the spot and lists its photo");
+    assert((await page.locator('#row-k-photo-beach .pic img').getAttribute("src")).startsWith("blob:"), "the background Commons lookup never displaces his photo");
+    // "Use my photo" in its detail still changes it later
+    await page.click('button[data-open="k-photo-beach"]'); await page.waitForSelector('#detail-k-photo-beach [data-unphoto]');
+    assert((await page.locator('#detail-k-photo-beach [data-photo]').count()) === 1 && /Photo: yours/.test(await text(page, "#detail-k-photo-beach")), "its detail offers Use my photo and Remove photo like any other spot, and says the photo is his");
+    const [ch3] = await Promise.all([page.waitForEvent("filechooser"), page.click('#detail-k-photo-beach [data-photo]')]);
+    await ch3.setFiles({ name: "beach2.png", mimeType: "image/png", buffer: await pngOf(7) });
+    await page.waitForFunction(at => (JSON.parse(localStorage.getItem("goc.settings")).photos || {})["k-photo-beach"] > at, pb.updatedAt, { timeout: 15000 });
+    const pb2 = await stored(page, "k-photo-beach");
+    assert(pb2 && pb2.size !== pb.size && pb2.updatedAt > pb.updatedAt && pb2.w === 480, "Use my photo in the detail replaces it: new bytes, newer timestamp");
+    await page.waitForTimeout(2500);
+    assert(sync.log.filter(l => /^PUT \/v1\/photo\/k-photo-beach/.test(l)).length === 2 && sync.photos["k-photo-beach"].length === pb2.size, "and the replacement goes up to the Worker too");
+    assert(errors.length === 0, "add with photo: no page errors (" + errors.join(" | ") + ")");
+
     // a second linked device fetches the missing photo in the background
     const two = await newPage(browser, url, { width: 390, sync, init: () => { localStorage.setItem("goc.sync", JSON.stringify({ url: "https://sync.test.workers.dev", key: "k".repeat(40), remoteUpdatedAt: null })); } });
     await two.page.waitForSelector(".row", { timeout: 20000 });
@@ -200,13 +238,15 @@ try {
     assert((await two.page.locator('#row-stevenson .pic img').getAttribute("src") || "").startsWith("blob:") && sync.log.filter(l => /^GET \/v1\/photo\/stevenson/.test(l)).length >= 1, "another linked device pulls the settings, sees the photo listed, fetches it in the background and shows it");
     await two.page.waitForSelector("#row-k-killer-beach", { timeout: 10000 }).catch(() => {});
     assert((await two.page.locator("#row-k-killer-beach").count()) === 1 && (await two.page.locator('#row-k-killer-beach .pic img[src*="kites.jpg"]').count()) === 1, "the kept spot and its Commons photo came along in the settings");
+    await two.page.waitForFunction(() => document.querySelector('#row-k-photo-beach .pic img')?.src.startsWith("blob:"), null, { timeout: 15000 }).catch(() => {});
+    assert((await two.page.locator('#row-k-photo-beach .pic img').getAttribute("src") || "").startsWith("blob:") && sync.log.filter(l => /^GET \/v1\/photo\/k-photo-beach/.test(l)).length >= 1, "the spot added with a photo shows that photo on the other device too");
     // Remove photo on the second device: gone from the Worker, and the first device drops it on its next sync
     await two.page.click('button[data-open="stevenson"]'); await two.page.waitForSelector('#detail-stevenson [data-unphoto]');
     await two.page.click('#detail-stevenson [data-unphoto]'); await two.page.waitForTimeout(2500);
     assert(!sync.photos.stevenson && sync.log.some(l => /^DELETE \/v1\/photo\/stevenson/.test(l)) && !(sync.doc.settings.photos || {}).stevenson && (await two.page.locator('#row-stevenson .pic img').getAttribute("src")).endsWith("img/stevenson.jpg"), "Remove photo: deleted from the Worker, dropped from the settings list, built-in photo back");
     await page.evaluate(() => syncPull());
     await page.waitForFunction(() => (document.querySelector('#row-stevenson .pic img')?.src || "").endsWith("img/stevenson.jpg"), null, { timeout: 15000 }).catch(() => {});
-    assert((await page.locator('#row-stevenson .pic img').getAttribute("src")).endsWith("img/stevenson.jpg") && (await page.evaluate(() => Object.keys(riderPhotos).length)) === 0, "the first device drops it too on its next sync and restores the default");
+    assert((await page.locator('#row-stevenson .pic img').getAttribute("src")).endsWith("img/stevenson.jpg") && (await page.evaluate(() => Object.keys(riderPhotos).sort().join())) === "k-photo-beach", "the first device drops it too on its next sync and restores the default; the added spot's photo stays");
     assert(errors.length === 0 && two.errors.length === 0, "two devices: no page errors (" + errors.concat(two.errors).join(" | ") + ")");
     await two.ctx.close(); await ctx.close();
   }
