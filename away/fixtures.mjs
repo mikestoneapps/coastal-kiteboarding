@@ -1,7 +1,8 @@
 // Mock answers for the services the away-from-home mode calls, shaped like the real ones.
 // Used by away/test.mjs (Node) and away/browser-test.mjs (headless browser with the network intercepted).
-// The build container can't reach Overpass, Open-Meteo, Nominatim or Commons, so the live check is pending
-// (docs/BUILD-PLAN.md, Phase 4). The area is "Sandy Cove", an invented stretch of coast near San Diego.
+// The build container can't reach Overpass, Open-Meteo, Nominatim or Commons, so everything here is invented:
+// the area is "Sandy Cove", a stretch of coast near San Diego. The spot list itself now comes from away-spots.json
+// (precomputed by away_spots.py); `awayFile()` below turns an Overpass answer into that file the way the Python does.
 
 export const HERE = { name: "San Diego", lat: 32.77, lon: -117.25 };   // ~900 mi from both houses
 
@@ -21,6 +22,33 @@ export const OVERPASS_SPOTS = {
 // 60 named beaches up the coast on top of the above: the parser must keep every sport spot and cap the list at 40.
 export const OVERPASS_MANY = { elements: OVERPASS_SPOTS.elements.concat(Array.from({ length: 60 }, (_, i) => ({ type: "node", id: 1000 + i, lat: 33.0 + i * 0.02, lon: -117.3, tags: { natural: "beach", name: "Beach " + i } }))) };
 export const OVERPASS_EMPTY = { version: 0.6, generator: "mock", elements: [] };
+
+// away-spots.json as away_spots.py writes it from an Overpass answer: id = type letter + id, name, 4-decimal coordinates,
+// only the tags the page reads; private features dropped, unnamed beaches dropped, unnamed sport features kept.
+const KEEP_TAGS = ["sport", "natural", "surface", "description", "access", "fee", "name:en"];
+export function awayFile(overpass, generatedAt = "2026-10-12T10:13:00Z") {
+  const spots = [];
+  for (const e of overpass.elements) {
+    const t = e.tags || {}; if (t.access === "private" || t.access === "no") continue;
+    const lat = e.lat ?? e.center?.lat, lon = e.lon ?? e.center?.lon; if (lat == null || lon == null) continue;
+    const sport = /kitesurf|kiteboard|windsurf/i.test(t.sport || ""), name = t.name || t["name:en"];
+    if (!name && !sport) continue;
+    const tags = {}; for (const k of KEEP_TAGS) if (t[k]) tags[k] = t[k];
+    const s = { id: e.type[0] + e.id, lat: +(+lat).toFixed(4), lon: +(+lon).toFixed(4), tags }; if (name) s.name = name;
+    spots.push(s);
+  }
+  return { generatedAt, source: "OpenStreetMap (Overpass), ODbL", count: spots.length, spots };
+}
+// The catalogue is worldwide: these far-away entries must never show up near San Diego.
+const ELSEWHERE = [
+  { type: "node", id: 9001, lat: 45.7093, lon: -121.5003, tags: { sport: "kitesurfing;windsurfing", name: "Hood River Event Site" } },
+  { type: "node", id: 9002, lat: 35.2254, lon: -75.6233, tags: { natural: "beach", name: "Cape Hatteras Beach" } },
+  { type: "node", id: 9003, lat: 28.6, lon: -13.9, tags: { sport: "kitesurfing", name: "Flag Beach" } },
+];
+export const AWAY_FILE = awayFile({ elements: OVERPASS_SPOTS.elements.concat(ELSEWHERE) });
+export const AWAY_FILE_MANY = awayFile({ elements: OVERPASS_MANY.elements.concat(ELSEWHERE) });
+export const AWAY_FILE_EMPTY = awayFile(OVERPASS_EMPTY);
+export const AWAY_FILE_FAR = awayFile({ elements: ELSEWHERE });   // a real file with nothing near here
 
 // Overpass `out geom` result for the shoreline query. OSM coastline ways run with the water on the right:
 // this one runs north -> south, so the sea is to the west of it. The lake is a natural=water closed way.

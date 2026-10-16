@@ -448,7 +448,7 @@ function computeAll(){
   return rows.sort(byScore);
 }
 function render(){
-  maybeDiscover();   // away from home: starts or resumes the OpenStreetMap search for this area; no-op at home
+  maybeDiscover();   // away from home: starts or resumes the spot search for this area (away-spots.json); no-op at home
   document.getElementById("homeLO").setAttribute("aria-pressed",settings.home==="LO");
   document.getElementById("homeBC").setAttribute("aria-pressed",settings.home==="BC");
   document.getElementById("homeX").setAttribute("aria-pressed",settings.home==="X");
@@ -834,27 +834,28 @@ function unkeepSpot(id){
 
 /* ---------- away from home (SPEC §5) ---------- */
 // More than AWAY_MI from both houses, the curated list is useless, so the page looks up kite spots around the
-// rider from OpenStreetMap (Overpass): sport=kitesurfing/kiteboarding/windsurfing tags plus named beaches.
-// They get a forecast from one batched Open-Meteo call like every other spot, direction rules inferred from the
-// shoreline, and are marked "auto". Photos and webcams enrich in the background; scores never wait for them.
-// Pure functions first (away/test.mjs runs them under Node with mock data), then the page glue.
+// rider in away-spots.json: OpenStreetMap's sport=kitesurfing/kiteboarding/windsurfing features worldwide plus the
+// named beaches of the US, Canada and Mexico, precomputed weekly by away_spots.py (public Overpass servers are too
+// slow and flaky to query from the browser). The file is fetched same-origin once, cached in localStorage with its
+// date, and filtered by the drive radius. The spots get a forecast from one batched Open-Meteo call like every other
+// spot and are marked "auto". Direction rules (from the shoreline, Overpass), webcams and photos enrich in the
+// background with a 60 s timeout; scores never wait for them, and a spot whose shoreline lookup fails simply stays
+// "auto, facing unknown". Pure functions first (away/test.mjs runs them under Node with mock data), then the page glue.
 const AWAY_MI=150;                 // further than this from both houses = away mode
 const AWAY_MAX_SPOTS=40;           // most spots scored per area (one batched Open-Meteo call)
-const AWAY_CACHE_DAYS=7;           // last-seen results per area, so reopening is instant
+const AWAY_CACHE_DAYS=7;           // last-seen results per area and the catalogue file, so reopening is instant
+const AWAY_FILE="away-spots.json"; // the precomputed catalogue (same origin)
 const SHORE_MI=1.6;                // a shoreline further than this from the spot doesn't tell us which way it faces
 const CAM_MI=8;                    // nearest public webcam within this
+const ENRICH_MS=60000;             // total budget for each background Overpass lookup (shoreline, webcams), across mirrors
 const OVERPASS=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
 const UNKNOWN_DIR={best:[],work:[[0,360]],off:[]};   // facing unknown: every direction "works", nothing gates (marked in the detail)
-var away={key:null, status:"idle", spots:[], at:null, radiusMi:0, note:""};   // status: idle | searching | scoring | done | empty | error
+var away={key:null, status:"idle", spots:[], at:null, radiusMi:0, note:"", generatedAt:null};   // status: idle | searching | scoring | done | empty | error
 function milesFromHomes(lat,lon){ return Math.min(...Object.values(HOMES).map(h=>haversineMi(h.lat,h.lon,lat,lon))); }
 function awayMode(){ const c=settings.custom||{}; return settings.home==="X" && c.lat!=null && c.lon!=null && milesFromHomes(c.lat,c.lon)>AWAY_MI; }
 function awaySpots(){ return away && awayMode()? away.spots: []; }
 function searchMiles(){ return Math.min(120, Math.max(30, Math.round(settings.radius/60*47/1.35))); }   // drive minutes -> road miles -> straight-line miles
 function awayKey(){ const c=settings.custom; return (+c.lat).toFixed(2)+","+(+c.lon).toFixed(2); }
-function overpassQuery(lat,lon,mi){
-  const r=Math.round(mi*1609);
-  return `[out:json][timeout:25];(nwr(around:${r},${lat},${lon})["sport"~"kitesurf|kiteboard|windsurf"];nwr(around:${r},${lat},${lon})["natural"="beach"]["name"];);out center tags 600;`;
-}
 function facingQuery(spots){
   // Shoreline within 2.5 km of each spot: natural=coastline for the sea, natural=water closed ways for lakes and rivers.
   const a=spots.map(s=>`(around:2500,${s.lat},${s.lon})`);
@@ -873,16 +874,19 @@ function osmNotes(t){
   if(t.fee==="yes") bits.push("fee");
   return bits.length? "OpenStreetMap: "+bits.join(" · ") : "";
 }
-function parseOverpass(json, lat, lon){
-  // Elements -> candidate spots: named, not private, de-duplicated within 0.75 mi (a tagged launch beats the beach it sits on),
-  // every sport-tagged spot first, then the nearest named beaches up to AWAY_MAX_SPOTS.
-  const els=(json&&json.elements)||[], items=[];
-  for(const e of els){
-    const t=e.tags||{}; const la=e.lat??(e.center&&e.center.lat), lo=e.lon??(e.center&&e.center.lon); if(la==null||lo==null) continue;
+function pickAway(file, lat, lon, mi){
+  // Catalogue entries within `mi` straight-line miles -> candidate spots: named, not private, de-duplicated within 0.75 mi
+  // (a tagged launch beats the beach it sits on), every sport-tagged spot first, then the nearest named beaches up to AWAY_MAX_SPOTS.
+  const all=(file&&Array.isArray(file.spots)&&file.spots)||[], items=[];
+  const dLat=mi/69.1, dLon=mi/(69.1*Math.max(0.2,Math.cos(lat*Math.PI/180)));   // cheap bounding box before the haversine
+  for(const e of all){
+    const t=e.tags||{}; const la=+e.lat, lo=+e.lon; if(isNaN(la)||isNaN(lo)||!e.id) continue;
+    if(Math.abs(la-lat)>dLat||Math.abs(lo-lon)>dLon) continue;
+    const d=haversineMi(lat,lon,la,lo); if(d>mi) continue;
     if(t.access==="private"||t.access==="no") continue;
     const sport=/kitesurf|kiteboard|windsurf/i.test(t.sport||""), kite=/kitesurf|kiteboard/i.test(t.sport||"");
-    const name=t.name||t["name:en"]||(sport? (kite?"Kite launch":"Windsurf launch"):null); if(!name) continue;
-    items.push({osm:e.type[0]+e.id, name, lat:+(+la).toFixed(4), lon:+(+lo).toFixed(4), kind: kite?"Kite spot": sport?"Windsurf spot":"Beach", sport, notes:osmNotes(t), mi:+haversineMi(lat,lon,la,lo).toFixed(1)});
+    const name=e.name||t["name:en"]||(sport? (kite?"Kite launch":"Windsurf launch"):null); if(!name) continue;
+    items.push({osm:String(e.id), name, lat:+la.toFixed(4), lon:+lo.toFixed(4), kind: kite?"Kite spot": sport?"Windsurf spot":"Beach", sport, notes:osmNotes(t), mi:+d.toFixed(1)});
   }
   items.sort((a,b)=> (b.sport-a.sport) || a.mi-b.mi);
   const out=[];
@@ -955,10 +959,33 @@ function pickCommonsPhoto(json){
   return null;
 }
 /* page glue: network, state, rendering */
-async function overpass(query){
-  let err;
-  for(const u of OVERPASS){
+let awayFilePromise=null;
+function awayFileCached(){ try{ const c=JSON.parse(localStorage.getItem("goc.awayspots")||"null"); if(c&&c.at&&Array.isArray(c.spots)&&Date.now()-Date.parse(c.at)<AWAY_CACHE_DAYS*864e5) return c; }catch(e){} return null; }
+function awayFileStore(file){ try{ localStorage.setItem("goc.awayspots",JSON.stringify({at:new Date().toISOString(),generatedAt:file.generatedAt||null,spots:file.spots})); }catch(e){ console.warn("away catalogue too big to cache",e); } }
+async function awayFile(fresh){
+  // The precomputed catalogue: from localStorage if fetched within AWAY_CACHE_DAYS, else fetched once per page load.
+  // A missing file (404) or an empty one resolves to no spots; a network failure throws so the banner can say so.
+  if(!fresh){ const c=awayFileCached(); if(c) return c; if(awayFilePromise) return awayFilePromise; }
+  awayFilePromise=(async()=>{
     const c=new AbortController(); const t=setTimeout(()=>c.abort(),30000);
+    try{
+      const r=await fetch(AWAY_FILE+"?v="+new Date().toISOString().slice(0,10),{signal:c.signal,cache:fresh?"reload":"default"});
+      if(r.status===404) return {spots:[],missing:true};
+      if(!r.ok) throw new Error("spot list "+r.status);
+      const f=await r.json(); const file={generatedAt:f&&f.generatedAt||null, spots:(f&&Array.isArray(f.spots))?f.spots:[]};
+      if(file.spots.length) awayFileStore(file);
+      return file;
+    } finally{ clearTimeout(t); }
+  })();
+  awayFilePromise.catch(()=>{ awayFilePromise=null; });   // a failure is retried on the next search
+  return awayFilePromise;
+}
+async function overpass(query){
+  // Background enrichment only (shoreline facing, webcams). ENRICH_MS covers every mirror together; the caller never waits on it.
+  const deadline=Date.now()+ENRICH_MS; let err;
+  for(const u of OVERPASS){
+    const left=deadline-Date.now(); if(left<2000) break;
+    const c=new AbortController(); const t=setTimeout(()=>c.abort(),left);
     try{ const r=await fetch(u,{method:"POST",body:"data="+encodeURIComponent(query),signal:c.signal,headers:{"Content-Type":"application/x-www-form-urlencoded"}}); if(!r.ok) throw new Error("OpenStreetMap said "+r.status); return await r.json(); }
     catch(e){ err=e; } finally{ clearTimeout(t); }
   }
@@ -976,7 +1003,7 @@ async function geocode(q){
 }
 function cacheMerge(patch){ try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); Object.assign(c,patch); localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} }
 function awayCacheGet(key){ try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); const a=c.away&&c.away[key]; if(a&&a.at&&Date.now()-Date.parse(a.at)<AWAY_CACHE_DAYS*864e5) return a; }catch(e){} return null; }
-function awayCacheSet(){ if(!away.key) return; try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); c.away=c.away||{}; c.away[away.key]={at:away.at,radiusMi:away.radiusMi,status:away.status,spots:away.spots}; const ks=Object.keys(c.away); while(ks.length>6) delete c.away[ks.shift()]; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} }
+function awayCacheSet(){ if(!away.key) return; try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); c.away=c.away||{}; c.away[away.key]={at:away.at,radiusMi:away.radiusMi,status:away.status,spots:away.spots,generatedAt:away.generatedAt||null}; const ks=Object.keys(c.away); while(ks.length>6) delete c.away[ks.shift()]; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} }
 function mergeForecasts(docs){ (docs||[]).forEach(d=>{ if(d&&d.spotId) forecasts[d.spotId]=d; }); cacheMerge({docs:Object.values(forecasts)}); }
 let awayTimer=null;
 function maybeDiscover(){
@@ -984,7 +1011,7 @@ function maybeDiscover(){
   if(!awayMode()) return;
   const key=awayKey(), mi=searchMiles();
   if(away.key===key){ if(away.status==="searching"||away.status==="scoring"||away.status==="idle") return; if(away.radiusMi>=mi) return; }
-  else { const c=awayCacheGet(key); if(c&&c.radiusMi>=mi){ away={key,status:c.status==="empty"?"empty":"done",spots:c.spots||[],at:c.at,radiusMi:c.radiusMi,note:"cached"}; ensureAwayForecasts(); return; } away={key,status:"idle",spots:[],at:null,radiusMi:0,note:""}; }
+  else { const c=awayCacheGet(key); if(c&&c.radiusMi>=mi){ away={key,status:c.status==="empty"?"empty":"done",spots:c.spots||[],at:c.at,radiusMi:c.radiusMi,note:"cached",generatedAt:c.generatedAt||null}; ensureAwayForecasts(); return; } away={key,status:"idle",spots:[],at:null,radiusMi:0,note:""}; }
   clearTimeout(awayTimer); awayTimer=setTimeout(()=>discover(key,mi),250);
 }
 async function ensureAwayForecasts(){
@@ -993,30 +1020,35 @@ async function ensureAwayForecasts(){
   try{ const {docs}=await fetchForecasts(missing); if(away.key!==key) return; mergeForecasts(docs); render(); }
   catch(e){ console.warn("away forecast",e); if(away.key===key){ away.note="noforecast"; render(); } }
 }
-async function discover(key, mi){
+async function discover(key, mi, fresh){
   const c=settings.custom, lat=c.lat, lon=c.lon;
   const keepOld= away.key===key? away.spots: [];   // a wider search for the same place keeps the rows up until the new ones land
   away={key, status:"searching", spots:keepOld, at:new Date().toISOString(), radiusMi:mi, note:""};
   render();
-  let found;
-  try{ found=parseOverpass(await overpass(overpassQuery(lat,lon,mi)), lat, lon); }
-  catch(e){ console.warn("overpass",e); if(away.key!==key||away.status!=="searching") return; away.status="error"; away.note=String(e&&e.message||e); render(); return; }
+  let found, file;
+  try{ file=await awayFile(fresh); found=pickAway(file, lat, lon, mi); }
+  catch(e){ console.warn("away catalogue",e); if(away.key!==key||away.status!=="searching") return; away.status="error"; away.note=String(e&&e.message||e); render(); return; }
   if(away.key!==key||away.status!=="searching") return;   // he moved on
+  away.generatedAt=file.generatedAt||null;
   if(!found.length){ away.spots=[]; away.status="empty"; awayCacheSet(); render(); return; }
   const byOsm={}; keepOld.forEach(s=>byOsm[s.osm]=s);
   away.spots=found.map(it=>byOsm[it.osm]? Object.assign(byOsm[it.osm],{mi:it.mi}) : toAwaySpot(it));
   away.status="scoring"; render();   // names, distances and neutral tiles first
-  // Direction rules and forecasts in parallel; the list re-sorts once when both are in (the shoreline lookup gets 12 s, then it can land late).
-  const facing=overpass(facingQuery(away.spots)).then(j=>{ if(away.key!==key) return; applyFacing(away.spots,j); if(away.status==="done"){ awayCacheSet(); render(); } }).catch(e=>console.warn("shoreline",e));
+  // Scores wait only for the forecast. The shoreline lookup runs in the background (enrichAway) and lands when it lands.
   const fc=fetchForecasts(away.spots).then(({docs})=>{ if(away.key===key) mergeForecasts(docs); }).catch(e=>{ console.warn("away forecast",e); if(away.key===key) away.note="noforecast"; });
-  await Promise.allSettled([fc, Promise.race([facing, new Promise(r=>setTimeout(r,12000))])]);
+  enrichAway(key);
+  await fc;
   if(away.key!==key||away.status!=="scoring") return;
   away.status="done"; awayCacheSet(); render();
-  enrichAway(key);
 }
 async function enrichAway(key){
-  // Background only: webcams from OSM, then photos from Wikimedia Commons three at a time. Patches tiles in place, never re-sorts.
-  try{ const j=await overpass(camQuery(away.spots)); if(away.key!==key) return; if(applyCams(away.spots,j)){ awayCacheSet(); if(openSpot) render(); } }catch(e){}
+  // Background only, each lookup with a ENRICH_MS budget: direction rules from the shoreline (Overpass; the list re-sorts
+  // once when they land, a failure leaves the spots "facing unknown"), then webcams from OSM, then photos from Wikimedia
+  // Commons three at a time, patched into the tiles in place without re-sorting.
+  const spots=away.spots;
+  const unknown=spots.filter(s=>s.facing==null);
+  if(unknown.length){ try{ const j=await overpass(facingQuery(unknown)); if(away.key!==key) return; if(applyFacing(unknown,j)){ awayCacheSet(); render(); } }catch(e){ console.warn("shoreline",e); } }
+  try{ const j=await overpass(camQuery(spots)); if(away.key!==key) return; if(applyCams(spots,j)){ awayCacheSet(); if(openSpot) render(); } }catch(e){}
   const queue=away.spots.filter(s=>!s.photoUrl&&!s.photoChecked);
   const worker=async()=>{ let s; while((s=queue.shift())){ if(away.key!==key) return; try{ const p=await commonsPhoto(s.lat,s.lon); s.photoChecked=new Date().toISOString(); if(p){ s.photoUrl=p.url; s.photoCredit=p.credit; patchPhoto(s); } }catch(e){} } };
   await Promise.all([worker(),worker(),worker()]);
@@ -1043,16 +1075,17 @@ function awayBanner(){
   const here=esc((settings.custom.name||"here").split(" (")[0]), mi=away.radiusMi||searchMiles(), n=away.spots.length;
   const again=`<button class="btn small" id="awayAgain">Search again</button>`, hand=`<button class="btn small" id="awayHand">Add a spot by hand</button>`;
   let t;
-  if(away.status==="searching") t=`Looking for kite spots within ${mi} mi of ${here} on OpenStreetMap…`;
+  const when=away.generatedAt? ` (list updated ${new Date(away.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})})`:"";
+  if(away.status==="searching") t=`Looking for kite spots within ${mi} mi of ${here}…`;
   else if(away.status==="scoring") t=`${n} spot${n===1?"":"s"} near ${here}. Scoring…`;
-  else if(away.status==="empty") t=`<b>No spots found here yet.</b> OpenStreetMap has no kitesurfing or windsurfing launches and no named beaches within ${mi} mi of ${here}. Add one by hand: name, coordinates and which way the beach faces are all it needs.<div class="actions">${hand}${again}</div>`;
-  else if(away.status==="error") t=`<b>Couldn't reach OpenStreetMap</b> (${esc(away.note||"no answer")}), so there's no spot list for ${here} yet. Try again, or add a spot by hand.<div class="actions">${again}${hand}</div>`;
-  else if(away.status==="done") t=`${n} spot${n===1?"":"s"} within ${mi} mi of ${here}, from OpenStreetMap${away.note==="cached"?" (last search)":""}. Direction rules marked <b>auto</b> are inferred from the shoreline. Open a row and tap <b>Keep this spot</b> to save it${syncState.key?" to every linked device":""}.${away.note==="noforecast"?" <b>Couldn't get a forecast for them</b>; tap Refresh now.":""}<div class="actions">${again}${hand}</div>`;
+  else if(away.status==="empty") t=`<b>No spots found here yet.</b> OpenStreetMap has no kitesurfing or windsurfing launches and no named beaches within ${mi} mi of ${here}${when}. Add one by hand: name, coordinates and which way the beach faces are all it needs.<div class="actions">${hand}${again}</div>`;
+  else if(away.status==="error") t=`<b>Couldn't load the spot list</b> (${esc(away.note||"no answer")}), so there's nothing for ${here} yet. Try again, or add a spot by hand.<div class="actions">${again}${hand}</div>`;
+  else if(away.status==="done") t=`${n} spot${n===1?"":"s"} within ${mi} mi of ${here}, from OpenStreetMap${away.note==="cached"?" (last search)":when}. Direction rules marked <b>auto</b> are inferred from the shoreline. Open a row and tap <b>Keep this spot</b> to save it${syncState.key?" to every linked device":""}.${away.note==="noforecast"?" <b>Couldn't get a forecast for them</b>; tap Refresh now.":""}<div class="actions">${again}${hand}</div>`;
   else t=`More than ${AWAY_MI} miles from both houses.`;
   return `<div class="away" id="away"><div class="lbl">Away from home</div><div>${t}</div></div>`;
 }
 function bindAway(){
-  const a=document.getElementById("awayAgain"); if(a) a.onclick=()=>{ if(!awayMode()) return; try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); if(c.away) delete c.away[awayKey()]; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} discover(awayKey(), searchMiles()); };
+  const a=document.getElementById("awayAgain"); if(a) a.onclick=()=>{ if(!awayMode()) return; try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"{}"); if(c.away) delete c.away[awayKey()]; localStorage.setItem("goc.cache",JSON.stringify(c)); }catch(e){} discover(awayKey(), searchMiles(), true); };
   const h=document.getElementById("awayHand"); if(h) h.onclick=()=>keepSheet();
 }
 function keepDiscovered(id){
