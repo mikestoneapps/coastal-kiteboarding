@@ -1,10 +1,12 @@
 name: Away spots catalogue
 
-# Weekly job behind the page's away-from-home mode. Asks Overpass (overpass-api.de, then other public mirrors,
-# with long timeouts and retries) for every kitesurf/kiteboard/windsurf feature worldwide plus the named beaches
-# of the US, Canada and Mexico, and commits the compact away-spots.json the page filters by drive radius.
-# The browser never queries Overpass for the spot list any more (public mirrors took 30+ s or failed outright);
-# a failed run leaves the last good file in place.
+# Weekly job behind the page's away-from-home mode. Asks Overpass (overpass-api.de, then other public mirrors)
+# for every kitesurf/kiteboard/windsurf feature worldwide (one query) plus the named beaches of the US, Canada
+# and Mexico coasts and Great Lakes (about 4°x4° tiles, 90 s each; a country-wide beach query timed out on every
+# mirror), and commits the compact away-spots.json the page filters by drive radius.
+# The browser never queries Overpass for the spot list any more (public mirrors took 30+ s or failed outright).
+# The run is partial-tolerant: a tile that fails keeps the previous file's beaches for that area and is listed in
+# the log; only a failed sport query exits non-zero and leaves the last good file in place.
 on:
   schedule:
     - cron: "13 10 * * 1"   # Mondays 10:13 UTC
