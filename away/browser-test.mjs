@@ -77,6 +77,7 @@ try {
     assert(errors.length === 0, "home: no page errors (" + errors.join(" | ") + ")");
     const mine = { list: await text(page, "#list"), hero: await text(page, "#hero"), narr: await text(page, "#narr"), sub: await text(page, "#sub") };
     await page.click("#homeBC"); await page.waitForTimeout(200); mine.bc = await text(page, "#list");
+    assert((await text(page, "#homeBC")) === "Pacific City" && /Pacific CityCentral Coast\n[^\n]*\n5 min/.test(mine.bc) && /Cape LookoutTillamook Bay\n[^\n]*\n20 min/.test(mine.bc), "coast house is Pacific City: its own spot is 5 min, Cape Lookout 20 min");
     await page.click(".row .head"); await page.waitForTimeout(200); mine.detail = await text(page, ".row .detail");
     if (base) {
       const b = await newPage(browser, base.url);
@@ -87,6 +88,25 @@ try {
       for (const k of Object.keys(theirs)) { const same = mine[k] === theirs[k]; let diff = ""; if (!same) { const A = theirs[k].split("\n"), B = mine[k].split("\n"); for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) { diff += `\n  line ${i}: baseline ${JSON.stringify(A[i])} / now ${JSON.stringify(B[i])}`; if (diff.length > 1500) break; } } assert(same, `home mode ${k} identical to the baseline page` + diff); }
       await b.ctx.close();
     } else console.log("(no BASELINE_DIR: skipped the identical-to-baseline comparison)");
+    // "Add a spot" at home: the sheet finds a place by name; the kept spot shows in Rider and can be removed there
+    assert((await text(page, "#openKeep")) === "Add a spot", "the button under the list reads 'Add a spot'");
+    await page.click("#openKeep"); await page.waitForSelector("#ksKeep");
+    assert(/^Add a spot/.test(await text(page, "#sheet h2")) && (await page.locator("#ksq").count()) === 1 && (await page.locator("#ksGPS").count()) === 1 && (await page.locator("#ksMap").isHidden()) && (await page.getAttribute("#ksll", "readonly")) !== null, "Add a spot: place search, Use my location, read-only coordinates, no map link yet");
+    await page.click("#ksKeep"); await page.waitForTimeout(100);
+    assert((await page.locator("#ksKeep").count()) === 1 && (await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).kept.length)) === 0, "nothing is added without a name and a location");
+    await page.fill("#ksq", "San Diego"); await page.press("#ksq", "Enter"); await page.waitForSelector("#ksHits button", { timeout: 10000 });
+    await page.click("#ksHits button"); await page.waitForTimeout(100);
+    assert((await page.inputValue("#ksname")) === "San Diego" && (await page.inputValue("#ksll")) === "32.7174, -117.1628" && (await page.locator("#ksMap").isVisible()) && /maps\/search\/\?api=1&query=32\.7174%2C-117\.1628$/.test(await page.getAttribute("#ksMap", "href")), "picking a Nominatim match fills the name and coordinates and points Check on map at them");
+    await page.click("#ksKeep"); await page.waitForTimeout(400);
+    let kept = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).kept);
+    assert(kept.length === 1 && kept[0].id === "k-san-diego" && kept[0].lat === 32.7174 && kept[0].facing === 270 && kept[0].driveLO > 600 && kept[0].driveBC > 600 && kept[0].kept === true, "added like a kept spot: k- id, facing, estimated drives from both houses");
+    assert(/more spots? beyond/.test(await text(page, "#beyond")), "it sits beyond the home radius, counted like any other spot");
+    await page.click("#openSettings"); await page.waitForSelector("#riderKept button");
+    assert(/San Diego ×/.test(await text(page, "#riderKept")), "Rider sheet lists the added spot");
+    await page.click("#riderKept button"); await page.waitForTimeout(200);
+    kept = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).kept);
+    assert(kept.length === 0 && (await page.locator("#riderKept").count()) === 0, "removed from the Rider sheet");
+    await page.click("#closeSheet");
     // Elsewhere within Oregon: still home behaviour (no discovery), just estimated drives
     await page.click("#homeX"); await page.waitForSelector("#plFind");
     assert((await page.locator("#plq").count()) === 1, "Elsewhere sheet has the place-name search");
@@ -169,9 +189,15 @@ try {
     assert(/list updated Oct 12/.test(await text(page, "#away")), "GPS 900 mi from home -> away mode; nothing in the catalogue nearby -> 'No spots found here yet' with the list date");
     assert((await page.locator("#awayHand").count()) === 1 && (await page.locator(".row").count()) === 0 && (await page.locator(".empty").count()) === 0, "empty state: add-by-hand offered, no rows, no 'widen the slider' message");
     await page.click("#awayHand"); await page.waitForSelector("#ksKeep");
-    await page.fill("#ksname", "Hand Beach"); await page.fill("#ksll", "32.80, -117.26"); await page.click('#ksface button[data-deg="270"]'); await page.click("#ksKeep");
+    await page.click("#ksGPS"); await page.waitForFunction(() => document.getElementById("ksll")?.value === "32.77, -117.25", null, { timeout: 10000 });
+    assert((await page.locator("#ksMap").isVisible()) && /query=32\.77%2C-117\.25$/.test(await page.getAttribute("#ksMap", "href")), "Use my location fills the coordinates from GPS and enables Check on map");
+    await page.click("#ksEdit"); await page.fill("#ksll", "32.80, -117.26"); await page.waitForTimeout(50);
+    assert(/query=32\.8%2C-117\.26$/.test(await page.getAttribute("#ksMap", "href")), "Edit makes the coordinates typeable; the map link follows");
+    await page.fill("#ksname", "Hand Beach"); await page.click('#ksface button[data-deg="270"]'); await page.click("#ksKeep");
     await page.waitForSelector("#row-k-hand-beach", { timeout: 10000 });
-    assert((await page.locator("#row-k-hand-beach").count()) === 1, "a spot added by hand (name + coordinates + facing) shows up and gets scored");
+    assert((await page.locator("#row-k-hand-beach").count()) === 1, "a spot added by hand (name + location + facing) shows up and gets scored");
+    const hand = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).kept[0]);
+    assert(hand.lat === 32.8 && hand.lon === -117.26 && hand.facing === 270, "saved with the typed coordinates");
     assert(errors.length === 0, "empty state: no page errors (" + errors.join(" | ") + ")");
     await ctx.close();
   }

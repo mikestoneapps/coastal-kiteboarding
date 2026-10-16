@@ -73,6 +73,21 @@ export const COMMONS = {
     "3": { pageid: 3, index: 3, title: "File:Sandy Cove kites.jpg", imageinfo: [{ thumburl: "https://upload.wikimedia.org/x/kites.jpg", width: 640, height: 427, descriptionurl: "https://commons.wikimedia.org/wiki/File:Sandy_Cove_kites.jpg", extmetadata: { LicenseShortName: { value: "CC BY 2.0" }, Artist: { value: "<a href='x'>Jane Doe</a>" } } }] },
   } }
 };
+// A fuller geosearch answer (categories included, as the page now asks for them): the nearest hit is a rose, then beach photos of
+// three shapes, a map, a sign, a portrait, an unfree one and one with no categories at all. pickCommonsPhoto must choose by keywords.
+const cpage = (id, title, w, h, lic, cats, artist = "Jane Doe") => [id, { pageid: +id, index: +id, title: "File:" + title, ...(cats ? { categories: cats.map(c => ({ ns: 14, title: "Category:" + c })) } : {}), imageinfo: [{ thumburl: "https://upload.wikimedia.org/x/" + title.toLowerCase().replace(/[^a-z0-9.]+/g, "-"), width: w, height: h, descriptionurl: "https://commons.wikimedia.org/wiki/File:" + title.replace(/ /g, "_"), extmetadata: { LicenseShortName: { value: lic }, Artist: { value: artist } } }] }];
+export const COMMONS_SCORED = { query: { pages: Object.fromEntries([
+  cpage("1", "Rose in Balboa Park.jpg", 640, 427, "CC BY-SA 4.0", ["Flowers of California", "Balboa Park"]),                          // nearest, but a flower: -1
+  cpage("2", "Mission Beach boardwalk.jpg", 640, 427, "CC BY 2.0", ["Beaches of San Diego", "Mission Bay (San Diego)"]),               // 3
+  cpage("3", "Ocean Beach pier at sunset.jpg", 640, 427, "CC BY 2.0", ["Piers in California", "Ocean Beach, San Diego"]),             // 6: the pick
+  cpage("4", "Mission Beach panorama.jpg", 4000, 600, "CC BY 2.0", ["Beaches of San Diego", "Mission Bay (San Diego)"]),             // 3, but 6.7:1
+  cpage("5", "Mission Beach boardwalk big.jpg", 3000, 2000, "CC BY 2.0", ["Beaches of San Diego", "Mission Bay (San Diego)"]),       // 3, 3:2, bigger than 2
+  cpage("6", "Lifeguard tower map.png", 800, 600, "Public domain", ["Maps of San Diego"]),                                          // -2
+  cpage("7", "Beach parking sign.jpg", 640, 427, "CC BY 2.0", ["Road signs in California", "Beaches of San Diego"]),                   // 0: not positive
+  cpage("8", "Surfer at Ocean Beach.jpg", 400, 600, "CC BY 2.0", ["Beaches of San Diego"]),                                           // portrait: skipped
+  cpage("9", "Ocean Beach aerial.jpg", 640, 427, "All rights reserved", ["Beaches of San Diego"]),                                    // not free: skipped
+  cpage("10", "Ocean Beach lifeguards.jpg", 640, 427, "CC BY 2.0", null),                                                              // 2 from the title alone (no categories)
+]) } };
 export const NOMINATIM = [
   { place_id: 1, lat: "32.7174", lon: "-117.1628", display_name: "San Diego, San Diego County, California, United States" },
   { place_id: 2, lat: "32.7157", lon: "-117.1611", display_name: "San Diego, CA, USA" },

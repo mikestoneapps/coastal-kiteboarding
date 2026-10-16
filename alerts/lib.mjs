@@ -11,7 +11,7 @@ export const scoring = require(path.join(ROOT, "scoring.js"));
 export const SPOTS = require(path.join(ROOT, "spots.json"));
 
 export const TZ = "America/Los_Angeles", DAYS = 5;
-export const HOMES = { LO: { name: "Lake Oswego", key: "driveLO" }, BC: { name: "Bay City", key: "driveBC" } };
+export const HOMES = { LO: { name: "Lake Oswego", key: "driveLO" }, BC: { name: "Pacific City", key: "driveBC" } };
 export const DEFAULT_WEIGHTS = scoring.DEFAULT_WEIGHTS;
 export const DEFAULT_ALERTS = { minScore: 8, maxDrive: 180, days: [0, 1, 2, 3, 4, 5, 6], hour: 19, lead: 3, cap: 1, confidence: true, sameDay: true, quietFrom: 21, quietTo: 7, email: true };
 const RESCORE = 2;        // a repeat alert needs the score to move this much

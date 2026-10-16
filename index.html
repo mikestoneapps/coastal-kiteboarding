@@ -140,7 +140,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
     </div>
     <div class="seg" role="group" aria-label="Home base">
       <button id="homeLO" aria-pressed="true">Lake Oswego</button>
-      <button id="homeBC" aria-pressed="false">Bay City</button>
+      <button id="homeBC" aria-pressed="false">Pacific City</button>
       <button id="homeX" aria-pressed="false">Elsewhere</button>
     </div>
   </header>
@@ -170,7 +170,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 
   <div class="list" id="list"></div>
   <div class="beyond" id="beyond"></div>
-  <div class="beyond"><button id="openKeep">Keep a spot that isn't listed</button></div>
+  <div class="beyond"><button id="openKeep">Add a spot</button></div>
 </div>
 
 <div class="dock">
@@ -183,8 +183,8 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 <div id="sheetHost"></div>
 
 <script>
-const SPOTS = /*SPOTS*/[{"id":"stevenson","name":"Stevenson","region":"Gorge","lat":45.695,"lon":-121.885,"driveLO":65,"driveBC":160,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. Bob's Beach launch; flat-ish river, good warm-up for the Gorge.","parking":"Bob's Beach lot off Cascade Ave, Stevenson WA","plat":45.6943,"plon":-121.8852},{"id":"hoodriver","name":"Hood River Sandbar","region":"Gorge","lat":45.716,"lon":-121.515,"driveLO":75,"driveBC":170,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. 14\u201325 mph typical, 25\u201335+ when it's on. Sandbar is managed by the Columbia Gorge Kiteboarding Assoc.","parking":"Hood River Event Site / Sandbar lot (Port of Hood River, day fee)","plat":45.7159,"plon":-121.5141},{"id":"rufus","name":"Rufus (Rock Pile)","region":"Gorge","lat":45.692,"lon":-120.733,"driveLO":120,"driveBC":215,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"East Gorge, west wind only. 12\u201350 mph depending on the pattern; often blowing when Hood River is light.","parking":"Rufus launch, Old Hwy 30 / I-84 exit 109","plat":45.6933,"plon":-120.7315},{"id":"fortstevens","name":"Fort Stevens / Clatsop Spit","region":"North Coast","lat":46.19,"lon":-123.98,"driveLO":125,"driveBC":55,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Northernmost coast spot, big open beach. Good for downwinders; watch the Columbia bar current.","parking":"Fort Stevens State Park, Parking Lot C (day-use fee or OR State Parks pass)","plat":46.2015,"plon":-123.9814},{"id":"gearhart","name":"Gearhart","region":"North Coast","lat":46.03,"lon":-123.93,"driveLO":110,"driveBC":45,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Summer NW thermal starts ~2pm, 15\u201330 mph. Drive-on beach; cars on the sand are the hazard.","parking":"Gearhart beach access at end of 10th St (drive on sand)","plat":46.0268,"plon":-123.9262},{"id":"manzanita","name":"Manzanita / Nehalem Bay","region":"North Coast","lat":45.72,"lon":-123.94,"driveLO":105,"driveBC":30,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Windiest spot on the north coast; usually blows ~10 mph stronger than nearby beaches. Bring the small kite.","parking":"Nehalem Bay State Park day-use lot (OR State Parks pass)","plat":45.6985,"plon":-123.9315},{"id":"rockaway","name":"Rockaway Beach","region":"North Coast","lat":45.613,"lon":-123.95,"driveLO":100,"driveBC":15,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long straight beach, easy access from 101. Lighter than Manzanita on the same day.","parking":"Rockaway Beach wayside lot, S 1st Ave","plat":45.6135,"plon":-123.9448},{"id":"bayocean","name":"Bayocean Spit","region":"Tillamook Bay","lat":45.53,"lon":-123.95,"driveLO":100,"driveBC":15,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Closest to the Bay City house. Ocean beach on the outside; the bay side flattens out at lower tide.","parking":"Bayocean Peninsula trailhead lot, Bayocean Rd","plat":45.5263,"plon":-123.9469},{"id":"oceanside","name":"Oceanside","region":"Tillamook Bay","lat":45.46,"lon":-123.97,"driveLO":105,"driveBC":20,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Under the cliffs, quiet. On a good swell day it's one of the best wave spots on the north coast.","parking":"Oceanside Beach State Recreation Site lot, Pacific Ave","plat":45.4603,"plon":-123.9693},{"id":"capelookout","name":"Cape Lookout","region":"Tillamook Bay","lat":45.36,"lon":-123.97,"driveLO":115,"driveBC":30,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long beach north of the cape; the headland shelters S wind and accelerates N wind.","parking":"Cape Lookout State Park day-use lot (OR State Parks pass)","plat":45.3614,"plon":-123.9707},{"id":"pacificcity","name":"Pacific City","region":"Central Coast","lat":45.2,"lon":-123.97,"driveLO":110,"driveBC":35,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Cape Kiwanda bends the N wind; launch well south of the dory boats and surfers.","parking":"Cape Kiwanda lot (paid) or Bob Straub State Park lot to the south","plat":45.2155,"plon":-123.9709},{"id":"roadsend","name":"Roads End, Lincoln City","region":"Central Coast","lat":45.01,"lon":-124.01,"driveLO":115,"driveBC":60,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long stretch of beach at the north end of town, away from the crowds.","parking":"Roads End State Recreation Site lot, Logan Rd","plat":45.0083,"plon":-124.0107},{"id":"newport","name":"Newport South Jetty","region":"Central Coast","lat":44.61,"lon":-124.07,"driveLO":150,"driveBC":90,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Some of the best down-the-line wave riding on the coast when NW wind meets NW swell.","parking":"South Jetty lot, SW Jetty Way (South Beach State Park)","plat":44.6103,"plon":-124.071},{"id":"florence","name":"Florence South Jetty","region":"Central Coast","lat":44.01,"lon":-124.13,"driveLO":180,"driveBC":130,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"N wind: ride the south jetty. S wind (winter, gustier): ride the north jetty. Can hit 40+; go early on big days.","parking":"South Jetty Rd beach lot, Oregon Dunes NRA (day fee)","plat":44.012,"plon":-124.131},{"id":"floras","name":"Floras Lake","region":"South Coast","lat":42.9,"lon":-124.5,"driveLO":300,"driveBC":240,"waves":false,"pass":false,"dir":{"work":[[170,360],[0,60]],"best":[[300,360],[0,30]],"off":[[90,160]]},"notes":"Freshwater lake behind the dunes, steady N wind, waist-deep launch. Worth the drive when it's nuking everywhere else. 8\u201310m kites typical.","parking":"Boice Cope County Park, Floras Lake Loop Rd","plat":42.9008,"plon":-124.5035}];
-const HOMES = {LO:{name:"Lake Oswego",lat:45.4207,lon:-122.6706,key:"driveLO"}, BC:{name:"Bay City",lat:45.5229,lon:-123.8893,key:"driveBC"}};
+const SPOTS = /*SPOTS*/[{"id":"stevenson","name":"Stevenson","region":"Gorge","lat":45.695,"lon":-121.885,"driveLO":65,"driveBC":185,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. Bob's Beach launch; flat-ish river, good warm-up for the Gorge.","parking":"Bob's Beach lot off Cascade Ave, Stevenson WA","plat":45.6943,"plon":-121.8852},{"id":"hoodriver","name":"Hood River Sandbar","region":"Gorge","lat":45.716,"lon":-121.515,"driveLO":75,"driveBC":215,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. 14\u201325 mph typical, 25\u201335+ when it's on. Sandbar is managed by the Columbia Gorge Kiteboarding Assoc.","parking":"Hood River Event Site / Sandbar lot (Port of Hood River, day fee)","plat":45.7159,"plon":-121.5141},{"id":"rufus","name":"Rufus (Rock Pile)","region":"Gorge","lat":45.692,"lon":-120.733,"driveLO":120,"driveBC":275,"waves":false,"pass":false,"dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"East Gorge, west wind only. 12\u201350 mph depending on the pattern; often blowing when Hood River is light.","parking":"Rufus launch, Old Hwy 30 / I-84 exit 109","plat":45.6933,"plon":-120.7315},{"id":"fortstevens","name":"Fort Stevens / Clatsop Spit","region":"North Coast","lat":46.19,"lon":-123.98,"driveLO":125,"driveBC":120,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Northernmost coast spot, big open beach. Good for downwinders; watch the Columbia bar current.","parking":"Fort Stevens State Park, Parking Lot C (day-use fee or OR State Parks pass)","plat":46.2015,"plon":-123.9814},{"id":"gearhart","name":"Gearhart","region":"North Coast","lat":46.03,"lon":-123.93,"driveLO":110,"driveBC":100,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Summer NW thermal starts ~2pm, 15\u201330 mph. Drive-on beach; cars on the sand are the hazard.","parking":"Gearhart beach access at end of 10th St (drive on sand)","plat":46.0268,"plon":-123.9262},{"id":"manzanita","name":"Manzanita / Nehalem Bay","region":"North Coast","lat":45.72,"lon":-123.94,"driveLO":105,"driveBC":60,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Windiest spot on the north coast; usually blows ~10 mph stronger than nearby beaches. Bring the small kite.","parking":"Nehalem Bay State Park day-use lot (OR State Parks pass)","plat":45.6985,"plon":-123.9315},{"id":"rockaway","name":"Rockaway Beach","region":"North Coast","lat":45.613,"lon":-123.95,"driveLO":100,"driveBC":50,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long straight beach, easy access from 101. Lighter than Manzanita on the same day.","parking":"Rockaway Beach wayside lot, S 1st Ave","plat":45.6135,"plon":-123.9448},{"id":"bayocean","name":"Bayocean Spit","region":"Tillamook Bay","lat":45.53,"lon":-123.95,"driveLO":100,"driveBC":40,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"North of the Pacific City house, on the Tillamook Bay spit. Ocean beach on the outside; the bay side flattens out at lower tide.","parking":"Bayocean Peninsula trailhead lot, Bayocean Rd","plat":45.5263,"plon":-123.9469},{"id":"oceanside","name":"Oceanside","region":"Tillamook Bay","lat":45.46,"lon":-123.97,"driveLO":105,"driveBC":30,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Under the cliffs, quiet. On a good swell day it's one of the best wave spots on the north coast.","parking":"Oceanside Beach State Recreation Site lot, Pacific Ave","plat":45.4603,"plon":-123.9693},{"id":"capelookout","name":"Cape Lookout","region":"Tillamook Bay","lat":45.36,"lon":-123.97,"driveLO":115,"driveBC":20,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long beach north of the cape; the headland shelters S wind and accelerates N wind.","parking":"Cape Lookout State Park day-use lot (OR State Parks pass)","plat":45.3614,"plon":-123.9707},{"id":"pacificcity","name":"Pacific City","region":"Central Coast","lat":45.2,"lon":-123.97,"driveLO":110,"driveBC":5,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Cape Kiwanda bends the N wind; launch well south of the dory boats and surfers.","parking":"Cape Kiwanda lot (paid) or Bob Straub State Park lot to the south","plat":45.2155,"plon":-123.9709},{"id":"roadsend","name":"Roads End, Lincoln City","region":"Central Coast","lat":45.01,"lon":-124.01,"driveLO":115,"driveBC":25,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long stretch of beach at the north end of town, away from the crowds.","parking":"Roads End State Recreation Site lot, Logan Rd","plat":45.0083,"plon":-124.0107},{"id":"newport","name":"Newport South Jetty","region":"Central Coast","lat":44.61,"lon":-124.07,"driveLO":150,"driveBC":70,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Some of the best down-the-line wave riding on the coast when NW wind meets NW swell.","parking":"South Jetty lot, SW Jetty Way (South Beach State Park)","plat":44.6103,"plon":-124.071},{"id":"florence","name":"Florence South Jetty","region":"Central Coast","lat":44.01,"lon":-124.13,"driveLO":180,"driveBC":140,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"N wind: ride the south jetty. S wind (winter, gustier): ride the north jetty. Can hit 40+; go early on big days.","parking":"South Jetty Rd beach lot, Oregon Dunes NRA (day fee)","plat":44.012,"plon":-124.131},{"id":"floras","name":"Floras Lake","region":"South Coast","lat":42.9,"lon":-124.5,"driveLO":300,"driveBC":280,"waves":false,"pass":false,"dir":{"work":[[170,360],[0,60]],"best":[[300,360],[0,30]],"off":[[90,160]]},"notes":"Freshwater lake behind the dunes, steady N wind, waist-deep launch. Worth the drive when it's nuking everywhere else. 8\u201310m kites typical.","parking":"Boice Cope County Park, Floras Lake Loop Rd","plat":42.9008,"plon":-124.5035}];
+const HOMES = {LO:{name:"Lake Oswego",lat:45.4207,lon:-122.6706,key:"driveLO"}, BC:{name:"Pacific City",lat:45.2020,lon:-123.9627,key:"driveBC"}};
 const PLACES = [["Portland (downtown)",45.5202,-122.6742],["Hood River",45.7054,-121.5215],["Seaside",45.9932,-123.9226],["Cannon Beach",45.8918,-123.9615],["Tillamook",45.4562,-123.8440],["Lincoln City",44.9582,-124.0179],["Newport",44.6368,-124.0535],["Salem",44.9429,-123.0351],["Corvallis",44.5646,-123.2620],["Eugene",44.0521,-123.0868],["Bend",44.0582,-121.3153],["Vancouver WA",45.6387,-122.6615]];
 const DEFAULT_WEIGHTS = {speed:1, dir:1, gust:1, wave:1, wx:1};
 const DEFAULT_CHECK = {
@@ -204,6 +204,8 @@ function driveMins(spot){
   const mi=haversineMi(h.lat,h.lon,spot.plat,spot.plon)*1.35;   // road factor
   return Math.round(mi/47*60/5)*5;                               // ~47 mph average incl. I-84 / 26
 }
+function estDrive(h,lat,lon){ return Math.round(haversineMi(h.lat,h.lon,lat,lon)*1.35/47*60/5)*5; }   // same estimate as driveMins() for a custom base
+function refreshKeptDrives(){ for(const k of settings.kept){ if(k.lat==null||k.lon==null) continue; k.driveLO=estDrive(HOMES.LO,k.lat,k.lon); k.driveBC=estDrive(HOMES.BC,k.lat,k.lon); } }   // added spots keep estimated drives; they follow the houses (the coast house moved in Oct 2026)
 const STYLES = {freeride:{lo:14,peak:20,hi:27,label:"Freeride"}, wave:{lo:14,peak:19,hi:24,label:"Wave"}, foil:{lo:9,peak:13,hi:18,label:"Foil"}};
 const DAY_START=7, DAY_END=19, NUKE=35;
 const KG=0.4536;
@@ -220,6 +222,7 @@ const CAMS={pacificcity:{name:"Pacific City surf cam",url:"https://www.surf-fore
             capelookout:{name:"Cape Lookout surf cam",url:"https://www.surf-forecast.com/breaks/Cape-Lookout/webcams/latest",mi:1.4}};
 let obsData={};   // spotId -> [{id,name,kind,dist_mi,spd,gst,dir,age_min,...}]
 if(!settings.check) settings.check=JSON.parse(JSON.stringify(DEFAULT_CHECK));
+refreshKeptDrives();
 function saveLocal(){ try{localStorage.setItem("goc.settings",JSON.stringify(settings))}catch(e){} }
 function saveSettings(){ settings.updatedAt=new Date().toISOString(); saveLocal(); syncSchedulePush(); }
 
@@ -381,6 +384,7 @@ function dayLabel(d, i){ const dt=new Date(d+"T12:00:00"); const today=new Date(
   const wd=dt.toLocaleDateString("en-US",{weekday:"short",timeZone:"America/Los_Angeles"}), md=dt.toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:"America/Los_Angeles"});
   if(d===today) return ["Today",wd+" "+md]; const tm=new Date(new Date(today+"T12:00:00").getTime()+864e5).toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}); if(d===tm) return ["Tomorrow",wd+" "+md]; return [wd,md]; }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function mapPointUrl(lat,lon){ return `https://www.google.com/maps/search/?api=1&query=${lat}%2C${lon}`; }   // a point, not directions: "Check on map" in the Add-a-spot sheet
 function mapsUrl(spot){ const h=homeInfo(); return `https://www.google.com/maps/dir/?api=1&origin=${h.lat},${h.lon}&destination=${spot.plat},${spot.plon}&travelmode=driving`; }
 
 /* ---------- narrative + alerts ---------- */
@@ -594,22 +598,41 @@ function placeSheet(){
     settings.custom={name:document.getElementById("plname").value.trim()||"Custom spot",lat:+m[1],lon:+m[2]}; settings.home="X"; saveSettings(); closeSheet(); render(); };
 }
 function keepSheet(pre){
-  pre=pre||{};   // prefilled from a discovered spot whose facing couldn't be read off the shoreline
-  sheet("Keep a spot", `<p style="font-size:13px;color:var(--muted);margin:0 0 6px">A beach you ride that isn't in the list. Name, coordinates and which way the beach faces are all it needs; it gets a forecast and a score like the others, and it stays in your list${syncState.key?" on every linked device":""}.</p>
-    <div class="field"><label for="ksname">Spot name</label><input type="text" id="ksname" placeholder="Mission Bay" value="${esc(pre.name||"")}" style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
-    <div class="field"><label for="ksll">Coordinates (lat, lon)</label><input type="text" id="ksll" placeholder="32.77, -117.25" value="${pre.lat!=null?pre.lat+", "+pre.lon:""}" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);max-width:320px"></div>
+  // "Add a spot" (nobody needs to know coordinates): find the place by name (Nominatim, the same geocoder as Elsewhere) or use the
+  // phone's location for a beach that isn't on any map; the coordinates show read-only with a Check-on-map link and an Edit fallback.
+  // Also opened prefilled (pre.carry) for a discovered spot whose facing couldn't be read off the shoreline: then it is "Keep this spot".
+  pre=pre||{};
+  const keep=!!pre.carry, has=pre.lat!=null&&pre.lon!=null;
+  const inp=extra=>`style="font:500 15px var(--body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);${extra||""}"`;
+  sheet(keep?"Keep this spot":"Add a spot", `<p style="font-size:13px;color:var(--muted);margin:0 0 6px">${keep? "Which way does the beach face? That is all it still needs. It keeps its forecast and score and stays in your list" : "A beach that isn't in the list. Find it by name, or stand on it and use your location, then say which way the beach faces. It gets a forecast and a score like the others, drive times from both houses, and stays in your list"}${syncState.key?" on every linked device":""}.</p>
+    ${keep?"":`<div class="field"><label for="ksq">Find the place</label><div style="display:flex;gap:6px;max-width:420px"><input type="search" id="ksq" placeholder="Mission Bay · Hatteras · Floras Lake" ${inp("flex:1;min-width:0")}><button class="btn" id="ksFind">Find</button></div><div class="kites" id="ksHits" style="margin-top:6px"></div><p id="ksNote" style="color:var(--muted);font-size:13px;margin:4px 0 0">Or, for a beach that isn't on any map, stand on it:</p><div class="actions" style="margin-top:6px"><button class="btn" id="ksGPS">Use my location</button></div></div>`}
+    <div class="field"><label for="ksname">Spot name</label><input type="text" id="ksname" placeholder="Mission Bay" value="${esc(pre.name||"")}" ${inp("max-width:320px")}></div>
+    <div class="field"><label for="ksll">Location</label><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><input type="text" id="ksll" readonly placeholder="not set yet" value="${has?pre.lat+", "+pre.lon:""}" style="font:500 15px var(--mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--fg);width:230px;max-width:100%"><a class="link" id="ksMap" href="${has?mapPointUrl(pre.lat,pre.lon):"#"}" target="_blank" rel="noopener"${has?"":" hidden"}>Check on map</a><button class="link" id="ksEdit" type="button">Edit</button></div><p id="ksLLNote" style="color:var(--muted);font-size:12px;margin:2px 0 0">${keep?"From OpenStreetMap.":"Filled in by the place search or your location. Edit to type coordinates from Google Maps instead."}</p></div>
     <div class="field"><label>Beach faces (toward the water)</label><div class="kites" id="ksface">${["N","NE","E","SE","S","SW","W","NW"].map((c,i)=>`<button data-deg="${i*45}" aria-pressed="${c==="W"}">${c}</button>`).join("")}</div></div>
     <ul class="check" style="margin:0"><li><input type="checkbox" id="kswaves" ${pre.waves===false?"":"checked"}><label for="kswaves">Ocean beach <small>(pull the surf forecast)</small></label></li></ul>
-    <div class="actions" style="margin-top:8px"><button class="btn primary" id="ksKeep">Keep this spot</button><button class="btn" id="ksGPS">Use my current location</button></div>
-    ${settings.kept.length?`<div class="kites" style="margin-top:10px">${settings.kept.map(k=>`<button data-unkeep="${k.id}" title="Remove">${esc(k.name)} ×</button>`).join("")}</div>`:""}`);
+    <div class="actions" style="margin-top:8px"><button class="btn primary" id="ksKeep">${keep?"Keep this spot":"Add this spot"}</button></div>
+    ${settings.kept.length?`<p style="color:var(--muted);font-size:12px;margin:12px 0 4px">Your spots · tap one to remove it:</p><div class="kites">${settings.kept.map(k=>`<button data-unkeep="${k.id}" title="Remove">${esc(k.name)} ×</button>`).join("")}</div>`:""}`);
+  const ll=document.getElementById("ksll"), map=document.getElementById("ksMap"), llNote=document.getElementById("ksLLNote"), nameIn=document.getElementById("ksname");
+  const parseLL=v=>{ const m=String(v||"").match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); return m&&Math.abs(+m[1])<=90&&Math.abs(+m[2])<=180? {lat:+m[1],lon:+m[2]}:null; };
+  const showLL=()=>{ const p=parseLL(ll.value); map.hidden=!p; if(p) map.href=mapPointUrl(p.lat,p.lon); };
+  const setLL=(lat,lon)=>{ ll.value=lat+", "+lon; ll.readOnly=true; showLL(); };
+  ll.oninput=showLL;
+  document.getElementById("ksEdit").onclick=()=>{ ll.readOnly=false; ll.placeholder="45.20, -123.96"; llNote.textContent="Latitude, longitude. In Google Maps: long-press the point, tap the numbers to copy."; ll.focus(); ll.select(); };
   host.querySelectorAll("#ksface button").forEach(b=>b.onclick=()=>host.querySelectorAll("#ksface button").forEach(o=>o.setAttribute("aria-pressed",o===b)));
-  document.getElementById("ksGPS").onclick=()=>{ const b=document.getElementById("ksGPS"); if(!navigator.geolocation){ b.textContent="Location not available"; return; } b.textContent="Locating…";
-    navigator.geolocation.getCurrentPosition(p=>{ document.getElementById("ksll").value=(+p.coords.latitude.toFixed(4))+", "+(+p.coords.longitude.toFixed(4)); b.textContent="Use my current location"; }, ()=>{ b.textContent="Couldn't get location — paste coordinates"; }, {enableHighAccuracy:true,timeout:12000,maximumAge:60000}); };
-  document.getElementById("ksKeep").onclick=()=>{ const name=document.getElementById("ksname").value.trim(); const m=document.getElementById("ksll").value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
-    if(!name){ document.getElementById("ksname").focus(); return; } if(!m||Math.abs(+m[1])>90||Math.abs(+m[2])>180){ document.getElementById("ksll").focus(); return; }   // a bad coordinate would fail the batched forecast call for every spot
+  const find=async()=>{ const q=document.getElementById("ksq").value.trim(); if(!q) return; const note=document.getElementById("ksNote"), hits=document.getElementById("ksHits"); note.textContent="Looking up "+q+"…"; hits.innerHTML="";
+    try{ const ps=await geocode(q); if(!document.getElementById("ksHits")) return; note.textContent= ps.length? "Tap the right one:" : "Nothing found for that. Try the town or beach name, or use your location.";
+      hits.innerHTML=ps.map((p,i)=>`<button data-i="${i}" title="${esc(p.full)}">${esc(p.name)}</button>`).join("");
+      hits.querySelectorAll("button").forEach(b=>b.onclick=()=>{ const p=ps[+b.dataset.i]; hits.querySelectorAll("button").forEach(o=>o.setAttribute("aria-pressed",o===b)); setLL(p.lat,p.lon); if(!nameIn.value.trim()) nameIn.value=p.name.split(",")[0].trim()||q; llNote.textContent="From the place search. Check on map to be sure it is the beach, not the town centre."; });
+    }catch(e){ if(document.getElementById("ksNote")) note.textContent="Couldn't reach the place lookup. Use your location, or Edit and type coordinates."; } };
+  const fb=document.getElementById("ksFind"); if(fb){ fb.onclick=find; document.getElementById("ksq").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); find(); } }; }
+  const gps=document.getElementById("ksGPS"); if(gps) gps.onclick=()=>{ if(!navigator.geolocation){ gps.textContent="Location not available"; return; } gps.textContent="Locating…";
+    navigator.geolocation.getCurrentPosition(p=>{ setLL(+p.coords.latitude.toFixed(4),+p.coords.longitude.toFixed(4)); gps.textContent="Use my location"; llNote.textContent="Your location now. Check on map to be sure it is the beach, not the parking lot."; }, ()=>{ gps.textContent="Couldn't get location — allow it in Settings, or find the place by name"; }, {enableHighAccuracy:true,timeout:12000,maximumAge:60000}); };
+  document.getElementById("ksKeep").onclick=()=>{ const name=nameIn.value.trim(); const p=parseLL(ll.value);
+    if(!name){ nameIn.focus(); return; }
+    if(!p){ llNote.textContent="Find the place by name or use your location first (or Edit and type the coordinates)."; (document.getElementById("ksq")||ll).focus(); return; }   // a bad coordinate would fail the batched forecast call for every spot
     const fb=host.querySelector('#ksface button[aria-pressed="true"]'); const facing=fb?+fb.dataset.deg:270;
     if(pre.carry&&pre.carry.forecastFrom) dropDiscovered(pre.carry.forecastFrom);
-    keepSpot({name,lat:+m[1],lon:+m[2],facing,waves:document.getElementById("kswaves").checked,...(pre.carry||{})}); closeSheet(); render(); };
+    keepSpot({name,lat:p.lat,lon:p.lon,facing,waves:document.getElementById("kswaves").checked,...(pre.carry||{})}); closeSheet(); render(); };
   host.querySelectorAll("#sheet [data-unkeep]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); unkeepSpot(b.dataset.unkeep); keepSheet(); });
 }
 const COMFORT_DEF=[["minWind","Minimum wind I'll go out for","kn",6,20,1],["maxWind","Maximum sustained wind","kn",18,40,1],["maxGust","Maximum gust","kn",18,45,1],["maxSurf","Maximum surf","ft",1,15,1],["minHours","Minimum session length","h",1,6,1]];
@@ -739,9 +762,11 @@ function riderSheet(){
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">The style switch on the home screen says what kind of day you want. These say what you'll put up with. Each can be overridden per spot from the spot's detail.</p>
     ${comfortSliders(settings.comfort,"c")}
     <div class="actions" style="margin-top:8px"><button class="btn" id="resetComfort">Reset comfort</button></div>
+    ${settings.kept.length?`<h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:18px 0 4px;font-family:var(--body)">Your spots</h3><p style="color:var(--muted);font-size:13px;margin:0 0 6px">Spots you added or kept. Tap one to remove it (its limits go with it).</p><div class="kites" id="riderKept">${settings.kept.map(k=>`<button data-unkeep="${k.id}" title="Remove">${esc(k.name)} ×</button>`).join("")}</div>`:""}
     <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:18px 0 4px;font-family:var(--body)">Sync across devices</h3>
     <div id="syncBox">${syncSection()}</div>`);
   bindSync();
+  host.querySelectorAll("#riderKept [data-unkeep]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); unkeepSpot(b.dataset.unkeep); riderSheet(); });
   bindComfort("c", settings.comfort, ()=>{saveSettings(); render();});
   document.getElementById("resetComfort").onclick=()=>{ settings.comfort={...DEFAULT_COMFORT}; saveSettings(); render(); riderSheet(); };
   document.getElementById("w").onchange=e=>{ settings.weightLb=+e.target.value||185; saveSettings(); render(); };
@@ -781,7 +806,7 @@ function howSheet(){
   <p><b>Reading the rows:</b> "18g24 NW · 2p–5p" means 18 knots average, gusting 24, wind from the northwest, best between 2 and 5 pm. Open a row for the plain-English version.</p>
   <p>Three hard gates set a score to 0 no matter what: offshore wind, 35+ kn sustained or 38+ gusts, and thunderstorms.</p>
   <p><b>Confidence</b> compares three forecast models over the best window. "Models agree" means they're within 4 kn of each other.</p>
-  <p>Forecasts are Open-Meteo (NOAA HRRR/NBM blend, GFS, ICON) and its marine model, refreshed every time you open the app. Drive times from Lake Oswego and Bay City are typical, not live; the Directions button opens Google Maps with current traffic.</p>
+  <p>Forecasts are Open-Meteo (NOAA HRRR/NBM blend, GFS, ICON) and its marine model, refreshed every time you open the app. Drive times from Lake Oswego and Pacific City are typical, not live; the Directions button opens Google Maps with current traffic.</p>
   <p style="font-size:12px;color:var(--muted)">Spot photos via Wikimedia Commons: Bayocean Spit: Tedder (CC BY-SA 4.0); Cape Lookout: Dougtone (CC BY-SA 2.0); Floras Lake: Bastique (CC BY-SA 3.0); Florence South Jetty: Bonnie Moreland from Oregon, United States (Public domain); Fort Stevens / Clatsop Spit: Flickr contributor (CC BY 2.0); Gearhart: Meronim (CC BY-SA 3.0); Hood River Sandbar: Adam Jones, Ph.D. (CC BY-SA 3.0); Manzanita / Nehalem Bay: Bob Heims, U.S. Army Corps of Engineers (Public domain); Newport South Jetty: User:Cacophony (CC BY 2.5); Oceanside: M.O. Stevens (CC BY-SA 3.0); Pacific City: Ennetws (Public domain); Roads End, Lincoln City: Rick Obst (CC BY 4.0); Rockaway Beach: Gary Halvorson, Oregon State Archives (CC BY 4.0); Rufus (Rock Pile): Joe Mabel (CC BY-SA 4.0); Stevenson: LegalTech (CC BY 4.0).</p></div>`);
   host.querySelectorAll("[data-w]").forEach(r=>r.oninput=()=>{ settings.weights[r.dataset.w]=+r.value; document.getElementById("wl-"+r.dataset.w).textContent=lab(+r.value); saveSettings(); render(); });
   document.getElementById("resetW").onclick=()=>{ settings.weights={...DEFAULT_WEIGHTS}; saveSettings(); render(); howSheet(); };
@@ -946,17 +971,45 @@ function applyCams(spots, json){
   for(const s of spots){ let b=null; for(const c of cams){ const mi=haversineMi(s.lat,s.lon,c.lat,c.lon); if(mi<=CAM_MI&&(!b||mi<b.mi)) b={name:c.name,url:c.url,mi:+mi.toFixed(1)}; } if(b){ s.cam=b; n++; } }
   return n;
 }
+// Photo relevance. Commons geosearch returns whatever was photographed near the coordinates: a flowerbed, the church, a road sign.
+// Each candidate is scored by the words in its title and (non-hidden) categories: +1 per word built on a positive keyword
+// (beach, beaches, coastline, kitesurfing, seaside, waterfront…), -1 per word built on a negative one (flowers, birds, buildings, maps…).
+// A word counts once. Three-letter keywords (sea, bay, car, map) only count whole, plural or in a listed compound, so "season",
+// "Carmel" and "maple" don't; longer ones also count inside a compound (windsurfing, offshore, breakwater, seabird).
+const PHOTO_POS=["beach","coast","shore","ocean","sea","bay","surf","kite","dune","jetty","pier","playa","lake","water"];
+const PHOTO_NEG=["flower","plant","insect","bird","sign","plate","car","vehicle","building","church","interior","map","logo","statue","person"];
+const PHOTO_SUFFIX=/^(s|es|r|rs|ing|er|ers|al|line|lines|side|sides|shore|shores|front|fronts|scape|scapes|wall|walls|water|ocean|surf|surfing|surfer|surfers|board|boarding|boarder|boarders)?$/;
+function photoWordHits(w,k){
+  if(w.startsWith(k)) return PHOTO_SUFFIX.test(w.slice(k.length));                                  // beaches, coastline, kitesurfing, seaside, bayocean; not "season", "surface", "plateau"
+  if(k.endsWith("y")&&w===k.slice(0,-1)+"ies") return true;                                          // jetties
+  const i=(k.length>=5||k==="surf"||k==="bird")? w.indexOf(k,1):-1;                                  // windsurfing, offshore, breakwater, seabird; never "research", "Carmel", "maple", "design"
+  return i>0 && PHOTO_SUFFIX.test(w.slice(i+k.length));
+}
+function photoKeywordScore(text){
+  let s=0;
+  for(const w of String(text).toLowerCase().split(/[^a-z]+/)){ if(!w) continue; if(PHOTO_POS.some(k=>photoWordHits(w,k))) s++; else if(PHOTO_NEG.some(k=>photoWordHits(w,k))) s--; }
+  return s;
+}
 function pickCommonsPhoto(json){
-  // First landscape, CC/public-domain JPEG or PNG from a Commons geosearch result.
+  // Best photo for a spot tile from a Commons geosearch answer (up to 20 candidates within 1.5 km, categories included):
+  // CC/public-domain JPEG, PNG or WebP, landscape; ranked by keyword score, then the aspect nearest the 3:2 tile, then size.
+  // Nothing with a positive score -> null, and the tile keeps its neutral glyph: a blank beats a photo of the wrong thing.
   const pages=Object.values((json&&json.query&&json.query.pages)||{}).sort((a,b)=>(a.index||0)-(b.index||0));
+  let best=null;
   for(const p of pages){
     const ii=p.imageinfo&&p.imageinfo[0]; if(!ii||!ii.thumburl||!(ii.width>ii.height)) continue;
     if(!/\.(jpe?g|png|webp)$/i.test(p.title||"")) continue;
     const m=ii.extmetadata||{}; const lic=(m.LicenseShortName&&m.LicenseShortName.value)||""; if(!/^(CC|Public domain|PD)/i.test(lic)) continue;
+    const title=String(p.title).replace(/^File:/,"");
+    const cats=(p.categories||[]).map(c=>String(c.title||"").replace(/^Category:/,""));
+    const kw=photoKeywordScore([title,...cats].join(" "));
+    if(kw<=0) continue;
+    const rank=kw*10 + Math.max(0,2-Math.abs(ii.width/ii.height-1.5)*2) + Math.min(1,(ii.width*ii.height)/2.7e6);   // keywords decide; a panorama or a square loses the tie to a 3:2 frame; then the bigger original
+    if(best&&rank<=best.rank) continue;
     const artist=((m.Artist&&m.Artist.value)||"").replace(/<[^>]+>/g,"").trim();
-    return {url:ii.thumburl, credit:`${String(p.title).replace(/^File:/,"")}: ${artist||"unknown"} (${lic})`, page:ii.descriptionurl||""};
+    best={rank, photo:{url:ii.thumburl, credit:`${title}: ${artist||"unknown"} (${lic})`, page:ii.descriptionurl||""}};
   }
-  return null;
+  return best? best.photo: null;
 }
 /* page glue: network, state, rendering */
 let awayFilePromise=null;
@@ -992,7 +1045,7 @@ async function overpass(query){
   throw err||new Error("OpenStreetMap unreachable");
 }
 async function commonsPhoto(lat,lon){
-  const u=`https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=1000&ggsnamespace=6&ggslimit=8&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=640&iiextmetadatafilter=Artist|LicenseShortName`;
+  const u=`https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=1500&ggsnamespace=6&ggslimit=20&prop=imageinfo|categories&clshow=!hidden&cllimit=200&iiprop=url|size|extmetadata&iiurlwidth=640&iiextmetadatafilter=Artist|LicenseShortName`;
   const c=new AbortController(); const t=setTimeout(()=>c.abort(),15000);
   try{ const r=await fetch(u,{signal:c.signal,headers:{"Api-User-Agent":"CoastalKiteboarding/1.0 (https://mikestoneapps.github.io/coastal-kiteboarding/)"}}); if(!r.ok) throw new Error(r.status); return pickCommonsPhoto(await r.json()); } finally{ clearTimeout(t); }
 }
@@ -1118,7 +1171,7 @@ function applyRemote(doc){
   // Server copy wins only when it is newer; defaults are re-merged exactly as on page load.
   const s=doc.settings||{};
   settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], check:s.check||settings.check, updatedAt:doc.updatedAt};
-  syncState.remoteUpdatedAt=doc.updatedAt; saveLocal(); syncSave();
+  refreshKeptDrives(); syncState.remoteUpdatedAt=doc.updatedAt; saveLocal(); syncSave();
 }
 async function syncPush(){
   if(!syncOn()) return;
