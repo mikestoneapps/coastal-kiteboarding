@@ -92,6 +92,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .drive small{display:block;font:500 11px var(--body);color:var(--muted);margin-top:3px}
 .detail{border-top:1px solid var(--line);padding:12px;background:var(--surface2);display:flex;flex-direction:column;gap:10px}
 .detail p{margin:0;font-size:14px}
+.striphead{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:2px 0 0}
 .detail .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 .kv div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
 .kv b{display:block;font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
@@ -161,7 +162,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
     </div>
     <div class="seg" role="group" aria-label="Sort">
       <button data-sort="score" aria-pressed="true">Today</button>
-      <button data-sort="tomorrow" aria-pressed="false">Tomorrow</button>
+      <button data-sort="tomorrow" aria-pressed="false" hidden>Tomorrow</button>
       <button data-sort="distance" aria-pressed="false">Distance</button>
     </div>
     <div class="radius">
@@ -373,6 +374,7 @@ function disagreement(spot,f){
 }
 function dayScore(spot, f, day, style){
   const todayLA=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+  const raw=f;   // the forecast as fetched: the disagreement flag compares the station with this, not with the blended hour
   if(day===todayLA) f=blendToday(spot,f);
   const idx=[]; f.time.forEach((t,i)=>{ if(t.startsWith(day)){ const h=+t.slice(11,13); if(h>=DAY_START&&h<=DAY_END) idx.push(i);} });
   if(!idx.length) return null;
@@ -391,7 +393,7 @@ function dayScore(spot, f, day, style){
   const gates=win.map(w=>w.gate).filter(Boolean), whys=win.map(w=>w.why).filter(Boolean);
   const reason= gates[0] || mode(whys);
   const dh=win.find(w=>(w.gate||w.why)===reason)||win[0];
-  const dis= day===todayLA? disagreement(spot,f):null;
+  const dis= day===todayLA? disagreement(spot,raw):null;   // today only; planning days are forecast-only (SPEC §7)
   return {score:Math.round(best.v*10)/10, from:+f.time[wi[0]].slice(11,13), to:+f.time[wi[wi.length-1]].slice(11,13)+1, spd,gst,dir,agree,models,wh,wp,temp,reason,detail:dh&&dh.detail,mine:dh&&dh.mine,hours:hs,idx,dis,window:N};
 }
 function mode(a){ if(!a.length) return null; const c={}; a.forEach(x=>c[x]=(c[x]||0)+1); return Object.keys(c).sort((x,y)=>c[y]-c[x])[0]; }
@@ -415,6 +417,14 @@ function kiteFor(spd){ const kg=settings.weightLb*KG; const ideal=kg*2.175/Math.
 function dayLabel(d, i){ const dt=new Date(d+"T12:00:00"); const today=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
   const wd=dt.toLocaleDateString("en-US",{weekday:"short",timeZone:"America/Los_Angeles"}), md=dt.toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:"America/Los_Angeles"});
   if(d===today) return ["Today",wd+" "+md]; const tm=new Date(new Date(today+"T12:00:00").getTime()+864e5).toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}); if(d===tm) return ["Tomorrow",wd+" "+md]; return [wd,md]; }
+function todayKey(){ return new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}); }
+function isToday(d){ return d===todayKey(); }
+function dayShort(d){ return new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",timeZone:"America/Los_Angeles"}); }   // "Fri"
+function dayLong(d){ return new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",timeZone:"America/Los_Angeles"}); }     // "Friday"
+function nextDay(){ const i=dayKeys.indexOf(selDay); return i>=0? dayKeys[i+1]||null : null; }                                          // the forecast day after the selected one, null on the last day
+function leadDays(d){ return Math.round((Date.parse(d+"T12:00:00Z")-Date.parse(todayKey()+"T12:00:00Z"))/864e5); }                     // 0 today, 1 tomorrow …
+function leadText(n){ return n<=0? null : n===1? "Tomorrow: hour-by-hour timing is usually good." : n<=3? "2–3 days out: expect the window to shift an hour or two." : "4–5 days out: trust the pattern, not the hour."; }
+function effSort(){ return settings.sort==="tomorrow"&&!nextDay()? "score" : settings.sort; }   // the stored key stays "tomorrow"; on the last forecast day it behaves as the day sort
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function mapPointUrl(lat,lon){ return `https://www.google.com/maps/search/?api=1&query=${lat}%2C${lon}`; }   // a point, not directions: "Check on map" in the Add-a-spot sheet
 function mapsUrl(spot){ const h=homeInfo(); return `https://www.google.com/maps/dir/?api=1&origin=${h.lat},${h.lon}&destination=${spot.plat},${spot.plon}&travelmode=driving`; }
@@ -475,12 +485,13 @@ function digestText(dg){
 
 /* ---------- render ---------- */
 function computeAll(){
-  const tm=dayKeys[1];
+  const nd=nextDay();   // rt = the day after the selected day (the second sort button); null on the last forecast day
   const rows=allSpots().map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const r=dayScore(spot,f,selDay,settings.style); if(!r) return null;
-    const rt= tm&&tm!==selDay? dayScore(spot,f,tm,settings.style):null; return {spot,f,r,rt,drive:driveMins(spot)??999}; }).filter(Boolean);
+    const rt= nd? dayScore(spot,f,nd,settings.style):null; return {spot,f,r,rt,drive:driveMins(spot)??999}; }).filter(Boolean);
   const byScore=(a,b)=> b.r.score-a.r.score || a.drive-b.drive;
-  if(settings.sort==="distance") return rows.sort((a,b)=> a.drive-b.drive || b.r.score-a.r.score);
-  if(settings.sort==="tomorrow") return rows.sort((a,b)=> ((b.rt?b.rt.score:b.r.score)-(a.rt?a.rt.score:a.r.score)) || a.drive-b.drive);
+  const sort=effSort();
+  if(sort==="distance") return rows.sort((a,b)=> a.drive-b.drive || b.r.score-a.r.score);
+  if(sort==="tomorrow") return rows.sort((a,b)=> ((b.rt?b.rt.score:b.r.score)-(a.rt?a.rt.score:a.r.score)) || a.drive-b.drive);
   return rows.sort(byScore);
 }
 function render(){
@@ -490,7 +501,11 @@ function render(){
   document.getElementById("homeX").setAttribute("aria-pressed",settings.home==="X");
   document.getElementById("homeX").textContent = settings.home==="X" ? (settings.custom.name||"Custom").split(" (")[0] : "Elsewhere";
   document.querySelectorAll("[data-style]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.style===settings.style));
-  document.querySelectorAll("[data-sort]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.sort===settings.sort));
+  { const nd=nextDay(), sort=effSort();   // sort labels follow the selected day: "Mon" sorts by its score, "Tue" by the next day's; no next day on the last forecast day
+    document.querySelectorAll("[data-sort]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.sort===sort));
+    const b1=document.querySelector('[data-sort="score"]'), b2=document.querySelector('[data-sort="tomorrow"]');
+    if(selDay){ b1.textContent=dayShort(selDay); b1.setAttribute("aria-label",`Sort by ${dayLong(selDay)}'s score`); }
+    b2.hidden=!nd; if(nd){ b2.textContent=dayShort(nd); b2.setAttribute("aria-label",`Sort by ${dayLong(nd)}'s score`); } }
   const rIn=document.getElementById("radius"); rIn.value=settings.radius; document.getElementById("radiusOut").textContent=mins(settings.radius);
   const days=document.getElementById("days"); days.innerHTML=dayKeys.map((d,i)=>{const [a,b]=dayLabel(d,i); return `<button data-day="${d}" aria-pressed="${d===selDay}">${a}<small>${b}</small></button>`;}).join("");
   const all=computeAll();
@@ -499,12 +514,14 @@ function render(){
   document.getElementById("narr").innerHTML = all.length? narrative(): "";
   const hero=document.getElementById("hero");
   const top=[...within].sort((a,b)=> b.r.score-a.r.score || a.drive-b.drive)[0];
+  // One format for every day: "BEST BET · FRI · WITHIN 1H30", then score / name / meta, whether or not a spot qualifies.
+  const heroLbl=`Best bet · ${dayShort(selDay)} · within ${mins(settings.radius)}`;
   if(!all.length){ hero.innerHTML=""; }
   else if(top && top.r.score>=4){
-    hero.innerHTML=`<div class="hero"><div class="hpic${photoSrc(top.spot)?"":" nophoto"}" data-spot="${esc(top.spot.id)}">${picHTML(top.spot)}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${wg(top.r.spd,top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
+    hero.innerHTML=`<div class="hero"><div class="hpic${photoSrc(top.spot)?"":" nophoto"}" data-spot="${esc(top.spot.id)}">${picHTML(top.spot)}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">${heroLbl}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${wg(top.r.spd,top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
   } else {
     const far=beyond.find(x=>x.r.score>=4);
-    hero.innerHTML=`<div class="hero"><div class="hbody"><div class="big" style="color:var(--gate)">${top?top.r.score.toFixed(1):"–"}</div><div><div class="lbl">${dayLabel(selDay)[0]} within ${mins(settings.radius)}</div><div class="name">Nothing worth the drive</div><div class="meta">${far? `Further out: ${esc(far.spot.name)} scores ${far.r.score.toFixed(1)} at ${mins(far.drive)}.` : "No spot in the forecast scores above 4 today."}</div></div></div></div>`;
+    hero.innerHTML=`<div class="hero"><div class="hbody"><div class="big" style="color:var(--gate)">${top?top.r.score.toFixed(1):"–"}</div><div><div class="lbl">${heroLbl}</div><div class="name">Nothing worth the drive</div><div class="meta">${far? `Further out: ${esc(far.spot.name)} scores ${far.r.score.toFixed(1)} at ${mins(far.drive)}.` : `No spot in the forecast scores above 4 on ${dayLong(selDay)}.`}</div></div></div></div>`;
   }
   const list=document.getElementById("list");
   const rows = (showBeyond? all: within);
@@ -519,8 +536,8 @@ function render(){
 }
 function row({spot,r,rt,drive}){
   const c=cls(r.score,r.reason&&["Offshore","Nuking","Storms"].includes(r.reason));
-  const chips=[]; if(r.reason) chips.push(`<span class="chip ${c}">${esc(r.reason)}</span>`); if(r.agree&&selDay!==dayKeys[0]) chips.push(`<span class="chip">${r.agree}</span>`); if(r.dis) chips.push(`<span class="chip ok">${esc(r.dis.text)}</span>`);
-  if(settings.sort==="tomorrow"&&rt) chips.push(`<span class="chip ${cls(rt.score)}">Tomorrow ${rt.score.toFixed(1)}</span>`);
+  const chips=[]; if(r.reason) chips.push(`<span class="chip ${c}">${esc(r.reason)}</span>`); if(r.agree&&!isToday(selDay)) chips.push(`<span class="chip">${r.agree}</span>`); if(r.dis) chips.push(`<span class="chip ok">${esc(r.dis.text)}</span>`);
+  if(effSort()==="tomorrow"&&rt) chips.push(`<span class="chip ${cls(rt.score)}">${dayShort(nextDay())} ${rt.score.toFixed(1)}</span>`);
   return `<div class="row" id="row-${spot.id}"><button class="head" aria-expanded="${openSpot===spot.id}" data-open="${spot.id}">
     <div class="pic${photoSrc(spot)?"":" nophoto"}">${picHTML(spot)}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
     <div class="body"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}${spot.auto?" · auto":""}</span></div>
@@ -533,7 +550,7 @@ function detail({spot,r,f}){
   const h=r.hours; const W=640,H=150,pad=22,bw=(W-pad*2)/h.length;
   const maxS=Math.max(30,...h.map(x=>f.gst[x.i]||0))+2;
   const y=v=>H-28-(v/maxS)*(H-50);
-  let svg=`<svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="Hourly wind for ${esc(spot.name)} in ${unitWord()}">`;
+  let svg=`<div class="striphead">${dayLong(selDay)}, hour by hour</div><svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="${dayLong(selDay)} hour by hour: wind for ${esc(spot.name)} in ${unitWord()}">`;
   const ticks= settings.units==="mph"? [10,20,30,40].map(v=>v/KN2MPH) : [10,20,30];   // gridlines on round numbers in the unit shown
   ticks.forEach(v=>{ if(v<maxS) svg+=`<line x1="${pad}" x2="${W-pad}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pad-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${wnum(v)}</text>`; });
   svg+=`<text x="${pad-4}" y="12" font-size="9" text-anchor="end" fill="var(--muted)" font-family="var(--body)">${unitName()}</text>`;
@@ -547,19 +564,35 @@ function detail({spot,r,f}){
   });
   svg+=`</svg>`;
   const plain=(spd,gst,dir)=> spd==null? "–" : `${wn(spd)}${gst!=null&&gst>spd+1?` gusting ${wnum(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
-  const st=latestStation(spot.id);
   const kv=[];
-  if(st){ const stale=st.age_min>OBS_MAX_AGE; kv.push([stale?`Wind measured · ${agoText(st.age_min)}`:`Wind measured now`,`${plain(st.spd,st.gst,st.dir)} <small>${esc(st.name)}, ${st.dist_mi} mi away, ${agoText(st.age_min)}${st.gst==null?" · no gust data":""}${stale?" · too old to score":""}</small>`, stale?"stale":""]); }
-  else kv.push(["Wind measured now",`<small>${(obsData[spot.id]||[]).length||NWS_STATIONS[spot.id]&&NWS_STATIONS[spot.id].length? "No recent reading from the nearest stations" : spot.auto||spot.kept? "Stations aren't looked up for added spots yet" : "No public wind station within 25 mi of this spot"}</small>`]);
-  const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
-  const ni=forecasts[spot.id].time.findIndex(t=>t.slice(0,13)===nowLA); const raw=forecasts[spot.id];
-  const at=(k)=> ni>=0&&ni+k<raw.time.length? [raw.spd[ni+k],raw.gst[ni+k],raw.dir[ni+k],hhmm(+raw.time[ni+k].slice(11,13))] : null;
-  const h1=at(1), h3=at(3), h5=at(5);
+  const raw=forecasts[spot.id];
   const src= raw.m&&raw.m.ecmwf&&raw.m.nbm? "3-model median":"model";   // older cached docs carry best match alone
-  kv.push(["Wind forecast · next hour", h1? `${plain(h1[0],h1[1],h1[2])} <small>${src}, for ${h1[3]}</small>` : "–"],
-          ["Wind forecast · in 3 hours", h3? `${plain(h3[0],h3[1],h3[2])} <small>${src}, for ${h3[3]}</small>` : "–"],
-          ["Wind forecast · in 5 hours", h5? `${plain(h5[0],h5[1],h5[2])} <small>${src}, for ${h5[3]}</small>` : "–"],
-          [`Best window · ${hhmm(r.from)}–${hhmm(r.to)}`,`${plain(r.spd,r.gst,r.dir)} <small>the best ${r.window}-hour stretch ${(l=>l==="Today"||l==="Tomorrow"?l.toLowerCase():new Date(selDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",timeZone:"America/Los_Angeles"}))(dayLabel(selDay)[0])}; this is what the score rates</small>`],
+  if(isToday(selDay)){
+    // Today: what the station reads now, then the next hours. The station is only ever scored today (dayScore -> blendToday).
+    const st=latestStation(spot.id);
+    if(st){ const stale=st.age_min>OBS_MAX_AGE; kv.push([stale?`Wind measured · ${agoText(st.age_min)}`:`Wind measured now`,`${plain(st.spd,st.gst,st.dir)} <small>${esc(st.name)}, ${st.dist_mi} mi away, ${agoText(st.age_min)}${st.gst==null?" · no gust data":""}${stale?" · too old to score":""}</small>`, stale?"stale":""]); }
+    else kv.push(["Wind measured now",`<small>${(obsData[spot.id]||[]).length||NWS_STATIONS[spot.id]&&NWS_STATIONS[spot.id].length? "No recent reading from the nearest stations" : spot.auto||spot.kept? "Stations aren't looked up for added spots yet" : "No public wind station within 25 mi of this spot"}</small>`]);
+    const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
+    const ni=raw.time.findIndex(t=>t.slice(0,13)===nowLA);
+    const at=(k)=> ni>=0&&ni+k<raw.time.length? [raw.spd[ni+k],raw.gst[ni+k],raw.dir[ni+k],hhmm(+raw.time[ni+k].slice(11,13))] : null;
+    const h1=at(1), h3=at(3), h5=at(5);
+    kv.push(["Wind forecast · next hour", h1? `${plain(h1[0],h1[1],h1[2])} <small>${src}, for ${h1[3]}</small>` : "–"],
+            ["Wind forecast · in 3 hours", h3? `${plain(h3[0],h3[1],h3[2])} <small>${src}, for ${h3[3]}</small>` : "–"],
+            ["Wind forecast · in 5 hours", h5? `${plain(h5[0],h5[1],h5[2])} <small>${src}, for ${h5[3]}</small>` : "–"]);
+  } else {
+    // Another day: morning / midday / afternoon of that day (block means of the same series the score runs on), then how far to trust the hour.
+    const wd=dayShort(selDay);
+    for(const [name,a,b] of [["Morning",7,10],["Midday",11,14],["Afternoon",15,18]]){
+      const ii=[]; raw.time.forEach((t,i)=>{ if(t.startsWith(selDay)){ const h=+t.slice(11,13); if(h>=a&&h<=b&&raw.spd[i]!=null) ii.push(i); } });
+      const avg=xs=>xs.length? xs.reduce((x,y)=>x+y,0)/xs.length : null;
+      const spd=avg(ii.map(i=>raw.spd[i])), gst=avg(ii.map(i=>raw.gst[i]).filter(x=>x!=null));
+      const dd=ii.map(i=>raw.dir[i]).filter(x=>x!=null), rad=Math.PI/180;
+      const dir=dd.length? (Math.round(Math.atan2(dd.reduce((s,x)=>s+Math.sin(x*rad),0),dd.reduce((s,x)=>s+Math.cos(x*rad),0))/rad)+360)%360 : null;
+      kv.push([`${wd} ${name.toLowerCase()} · ${hhmm(a)}–${hhmm(b)}`, ii.length? `${plain(spd,gst,dir)} <small>${src}, ${dayLong(selDay)} ${hhmm(a)}–${hhmm(b)} average</small>` : "–"]);
+    }
+    const lead=leadText(leadDays(selDay)); if(lead) kv.push(["Lead time",lead]);
+  }
+  kv.push([`Best window · ${hhmm(r.from)}–${hhmm(r.to)}`,`${plain(r.spd,r.gst,r.dir)} <small>the best ${r.window}-hour stretch ${isToday(selDay)?"today":dayLong(selDay)}; this is what the score rates</small>`],
           ["Kite",`${kiteFor(r.spd)}m <small>for ${settings.weightLb} lb in ${wn(r.spd)}</small>`],["Air",`${Math.round(r.temp)}°F`]);
   const bwv=spot.waves? buoyWaves(spot.id):null;
   if(r.wh!=null || bwv) kv.push(["Surf",`${r.wh!=null? `${r.wh.toFixed(1)}ft @ ${r.wp?r.wp.toFixed(0):"–"}s`:"–"}${bwv? ` <small>buoy reads ${bwv.wvht_ft.toFixed(1)} ft · ${esc(bwv.name)}, ${bwv.dist_mi} mi away, ${agoText(bwv.age_min)}</small>`:""}`]);
@@ -803,8 +836,8 @@ function applyDayHash(){
 }
 function widgetMock(){
   const all=computeAll().filter(x=>x.drive<=settings.radius); const t=all[0];
-  if(!t) return `<div class="widget"><div class="w1">Best bet · ${dayLabel(selDay)[0]}</div><div class="w2">–</div><div><div class="w3">Nothing in range</div><div class="w4">${esc(homeInfo().name)}</div></div></div>`;
-  return `<div class="widget"><div class="w1">Best bet · ${dayLabel(selDay)[0]}</div><div class="w2">${t.r.score.toFixed(1)}</div><div><div class="w3">${esc(t.spot.name.split(" /")[0])}</div><div class="w4">${wg(t.r.spd,t.r.gst)} ${compass(t.r.dir)} · ${hhmm(t.r.from)}–${hhmm(t.r.to)} · ${mins(t.drive)}</div></div></div>`;
+  if(!t) return `<div class="widget"><div class="w1">Best bet · ${dayShort(selDay)}</div><div class="w2">–</div><div><div class="w3">Nothing in range</div><div class="w4">${esc(homeInfo().name)}</div></div></div>`;
+  return `<div class="widget"><div class="w1">Best bet · ${dayShort(selDay)}</div><div class="w2">${t.r.score.toFixed(1)}</div><div><div class="w3">${esc(t.spot.name.split(" /")[0])}</div><div class="w4">${wg(t.r.spd,t.r.gst)} ${compass(t.r.dir)} · ${hhmm(t.r.from)}–${hhmm(t.r.to)} · ${mins(t.drive)}</div></div></div>`;
 }
 function riderSheet(){
   const ks=[5,6,7,8,9,10,11,12,13,14,15,17];
