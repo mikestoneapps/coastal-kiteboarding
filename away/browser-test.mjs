@@ -60,7 +60,7 @@ function mock(page, opts = {}) {
     if (u.startsWith("http://127.0.0.1")) return route.continue();
     if (LIVE && !/fonts\.|api\.weather\.gov/.test(u)) return route.continue();
     log.push(u.split("?")[0] + (body ? " " + decodeURIComponent(body.replace(/^data=/, "")).slice(0, 200) : ""));
-    if (/api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json((opts.forecast || forecastFor)(n)); }
+    if (/\/\/api\.open-meteo\.com/.test(u)) { const P = new URL(u).searchParams, n = (P.get("latitude") || "").split(",").length; log.push("models=" + P.get("models")); const a = (opts.forecast || forecastFor)(n); return a && a.status ? json({ error: true, reason: "test: rejected" }, a.status) : json(a); }
     if (/marine-api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json(F.marine(n)); }
     if (/overpass/.test(u)) { if (opts.overpass === "down") return json({}, 504); if (opts.overpass === "slow") await new Promise(r => setTimeout(r, 4000)); if (/surveillance/.test(body)) return json(F.OVERPASS_CAMS); if (/coastline/.test(body)) return json(F.OVERPASS_SHORE); return json({}, 400); }
     if (/commons\.wikimedia\.org/.test(u)) return json(F.COMMONS);
@@ -80,6 +80,7 @@ async function newPage(browser, url, opts) {
   return { ctx, page, errors, log };
 }
 const text = (page, sel) => page.locator(sel).innerText().catch(() => "");
+const first = (page, sel) => page.locator(sel).first().innerText().catch(() => "");   // first match (text() is strict: one element or nothing)
 const scored = page => page.locator(".row:not(.pending)").count();
 
 const { server, url } = await serve(ROOT);
@@ -106,7 +107,8 @@ try {
       const theirs = { list: await text(b.page, "#list"), hero: await text(b.page, "#hero"), narr: await text(b.page, "#narr"), sub: await text(b.page, "#sub") };
       await b.page.click("#homeBC"); await b.page.waitForTimeout(200); theirs.bc = await text(b.page, "#list");
       await b.page.click(".row .head"); await b.page.waitForTimeout(200); theirs.detail = await text(b.page, ".row .detail");
-      for (const k of Object.keys(theirs)) { const same = mine[k] === theirs[k]; let diff = ""; if (!same) { const A = theirs[k].split("\n"), B = mine[k].split("\n"); for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) { diff += `\n  line ${i}: baseline ${JSON.stringify(A[i])} / now ${JSON.stringify(B[i])}`; if (diff.length > 1500) break; } } assert(same, `home mode ${k} identical to the baseline page` + diff); }
+      const norm = s => s.replace(/(\d+g\d+) (kn|mph)\b/g, "$1");   // Oct 2026 added the unit after the wind shorthand; an older baseline still has to compare on everything else
+      for (const k of Object.keys(theirs)) { const same = norm(mine[k]) === norm(theirs[k]); let diff = ""; if (!same) { const A = norm(theirs[k]).split("\n"), B = norm(mine[k]).split("\n"); for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) { diff += `\n  line ${i}: baseline ${JSON.stringify(A[i])} / now ${JSON.stringify(B[i])}`; if (diff.length > 1500) break; } } assert(same, `home mode ${k} identical to the baseline page` + diff); }
       await b.ctx.close();
     } else console.log("(no BASELINE_DIR: skipped the identical-to-baseline comparison)");
     // Two buttons under the list. "Look up a new spot": the sheet finds a place by name; the kept spot shows in Rider and can be removed there
@@ -249,6 +251,71 @@ try {
     assert((await page.locator('#row-stevenson .pic img').getAttribute("src")).endsWith("img/stevenson.jpg") && (await page.evaluate(() => Object.keys(riderPhotos).sort().join())) === "k-photo-beach", "the first device drops it too on its next sync and restores the default; the added spot's photo stays");
     assert(errors.length === 0 && two.errors.length === 0, "two devices: no page errors (" + errors.concat(two.errors).join(" | ") + ")");
     await two.ctx.close(); await ctx.close();
+  }
+
+  /* ---------- 1c. units, the three-model median, the five-model spread, older caches, the three-model fallback ---------- */
+  {
+    // five models that disagree at every hour: best match 12, ECMWF 20, NBM 16 (median 16g19), GFS 30, ICON 8
+    const five = (m, s, g) => d => { const h = d.hourly; h["wind_speed_10m_" + m] = h.time.map(() => s); h["wind_gusts_10m_" + m] = h.time.map(() => g); };
+    const spread = n => { const a = F.openMeteo(n, () => ({ spd: 12, gst: 15, dir: 280 })); for (const d of a) { five("ecmwf_ifs025", 20, 24)(d); five("ncep_nbm_conus", 16, 19)(d); five("gfs_seamless", 30, 36)(d); five("icon_seamless", 8, 10)(d); } return a; };
+    const { page, errors, log, ctx } = await newPage(browser, url, { forecast: spread });
+    await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(800);
+    assert(log.filter(l => /^models=/.test(l)).length === 1 && log.includes("models=best_match,ecmwf_ifs025,ncep_nbm_conus,gfs_seamless,icon_seamless"), "one Open-Meteo call asks for the five models");
+    const wind1 = await first(page, ".row .wind");
+    assert(/^16g19 kn /.test(wind1), "the row scores and shows the median of best match / ECMWF / NBM (12 / 20 / 16 -> 16g19), with its unit: " + wind1);
+    assert(/16g19 kn /.test(await text(page, "#hero")) && /16g19 kn/.test(await text(page, "#narr")) && / · knots · /.test(await text(page, "#sub")), "hero, narrative and the header line carry the unit");
+    const firstId = await page.getAttribute(".row", "id");
+    await page.click(".row .head"); await page.waitForTimeout(200);
+    let det = await text(page, "#" + firstId.replace("row-", "detail-"));
+    assert(/Models\n8–30 kn/i.test(det) && /GFS highest, ICON lowest/.test(det) && /Models disagree/.test(det), "detail shows the five-model spread for the window and names the extremes: " + (det.match(/Models\n[^\n]*/i) || [""])[0]);
+    assert(/3-model median, for/.test(det) && /in 16 kn/.test(det), "the next-hour tiles say what they are (3-model median) and the kite tile has its unit");
+    assert(/Station reads|Wind measured now\n/i.test(det), "station rows still render");
+    // Rider -> mph: display only, everything else unchanged
+    await page.click("#openSettings"); await page.waitForSelector("#units button");
+    assert((await page.getAttribute('#units button[data-u="kn"]', "aria-pressed")) === "true" && /32 kn/.test(await text(page, "#cl-maxWind")), "Rider sheet: knots selected by default, comfort chips in knots");
+    await page.click('#units button[data-u="mph"]'); await page.waitForSelector('#units button[data-u="mph"][aria-pressed="true"]');
+    assert(/37 mph/.test(await text(page, "#cl-maxWind")) && /39 mph/.test(await text(page, "#cl-maxGust")), "comfort chips convert (32 kn -> 37 mph, 34 kn -> 39 mph); the sliders stay in knots");
+    assert((await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).units)) === "mph" && (await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).comfort.maxWind)) === 32, "units saved with the settings; stored limits still in knots");
+    await page.click("#closeSheet"); await page.waitForTimeout(200);
+    assert(/^18g22 mph /.test(await first(page, ".row .wind")) && /18g22 mph /.test(await text(page, "#hero")) && / · mph · /.test(await text(page, "#sub")), "rows, hero and header switch to mph (16 kn -> 18, 19 -> 22)");
+    det = await text(page, "#" + firstId.replace("row-", "detail-"));
+    assert(/Models\n9–35 mph/i.test(det) && /in 18 mph/.test(det) && /18 mph/.test(det), "the open detail converts too (spread 8–30 kn -> 9–35 mph)");
+    assert(/18g22 mph/.test(await page.locator(".row [data-share]").first().getAttribute("data-share")), "the share text carries the unit");
+    const scoresKn = await page.evaluate(() => [...document.querySelectorAll(".row .score")].map(e => e.textContent));
+    await page.reload(); await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(800);
+    assert(/^18g22 mph /.test(await first(page, ".row .wind")) && JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".row .score")].map(e => e.textContent))) === JSON.stringify(scoresKn), "mph survives a reload; scores identical in either unit");
+    await page.click("#openSettings"); await page.waitForSelector("#units button"); await page.click('#units button[data-u="kn"]'); await page.waitForTimeout(100); await page.click("#closeSheet"); await page.waitForTimeout(200);
+    assert(/^16g19 kn /.test(await first(page, ".row .wind")), "and back to knots");
+    assert(errors.length === 0, "units/models: no page errors (" + errors.join(" | ") + ")");
+    await ctx.close();
+
+    // an older cache (best match alone, GFS and ICON for confidence) and no `units` in the saved settings, with the forecast service down
+    const SPOTS = require(path.join(ROOT, "spots.json"));
+    const oldCache = `(() => { const T = ${JSON.stringify(F.openMeteo(1)[0].hourly.time)}; const c = v => T.map(() => v);
+      const docs = ${JSON.stringify(SPOTS.map(s => s.id))}.map(id => ({ spotId: id, fetchedAt: new Date().toISOString(), time: T, spd: c(18), gst: c(22), dir: c(275), temp: c(60), pop: c(0), code: c(1), vis: c(20000), m: { gfs: { spd: c(10) }, icon: { spd: c(26) } } }));
+      localStorage.setItem("goc.cache", JSON.stringify({ docs, fetchedAt: new Date().toISOString(), obs: {} }));
+      localStorage.setItem("goc.settings", JSON.stringify({ home: "LO", radius: 90, style: "freeride", weightLb: 185, kites: [7, 9, 12, 14] })); })()`;
+    const old = await newPage(browser, url, { init: oldCache, forecast: () => ({ status: 503 }) });
+    await old.page.waitForSelector(".row", { timeout: 20000 }); await old.page.waitForTimeout(1200);
+    assert(/^18g22 kn /.test(await first(old.page, ".row .wind")) && / · knots · /.test(await text(old.page, "#sub")), "older cache + no units setting: renders from the cache in knots");
+    await old.page.click(".row .head"); await old.page.waitForTimeout(200);
+    const odet = await text(old.page, "#" + (await old.page.getAttribute(".row", "id")).replace("row-", "detail-"));
+    assert(/Models\n10–26 kn/i.test(odet) && /ICON highest, GFS lowest/.test(odet) && /model, for/.test(odet) && !/3-model/.test(odet), "legacy doc: best match + GFS + ICON vote, and the tiles don't claim a median: " + (odet.match(/Models\n[^\n]*/i) || [""])[0]);
+    assert(old.log.filter(l => /^models=/.test(l)).length === 2 && old.log.filter(l => /^models=/.test(l)).every(l => /best_match/.test(l)), "five-model call rejected (503) -> one retry with the three models -> the cache stays on screen");
+    assert(old.errors.length === 0, "older cache: no page errors (" + old.errors.join(" | ") + ")");
+    await old.ctx.close();
+
+    // the API rejects the five-model query (400): the page falls back to the three-model call and still scores
+    let calls = 0;
+    const three = n => { const a = F.openMeteo(n); for (const d of a) for (const k of Object.keys(d.hourly)) if (/ecmwf|nbm/.test(k)) delete d.hourly[k]; return a; };
+    const fb = await newPage(browser, url, { forecast: n => (++calls === 1 ? { status: 400 } : three(n)) });
+    await fb.page.waitForSelector(".row", { timeout: 20000 }); await fb.page.waitForTimeout(800);
+    assert(calls === 2 && fb.log.includes("models=best_match,gfs_seamless,icon_seamless") && /^18g22 kn /.test(await first(fb.page, ".row .wind")), "400 on the five-model call -> three-model call -> scored as before");
+    await fb.page.click(".row .head"); await fb.page.waitForTimeout(200);
+    const fdet = await text(fb.page, "#" + (await fb.page.getAttribute(".row", "id")).replace("row-", "detail-"));
+    assert(/Models\n18 kn\nall 3 within a knot/i.test(fdet) && /Models agree/.test(fdet), "three identical models: 'all 3 within a knot', Models agree");
+    assert(fb.errors.length === 0, "fallback: no page errors (" + fb.errors.join(" | ") + ")");
+    await fb.ctx.close();
   }
 
   /* ---------- 2. away mode by place name ---------- */

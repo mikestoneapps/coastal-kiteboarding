@@ -217,8 +217,8 @@ const GLYPH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 
 const DEFAULT_COMFORT={minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3, stretch:true};
 const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true};
-let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], photos:{}, updatedAt:null, v:2};
-try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], photos:(s.photos&&typeof s.photos==="object")?s.photos:{}}; }catch(e){}
+let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], photos:{}, units:"kn", updatedAt:null, v:2};   // units: "kn" | "mph", display only; every number inside stays in knots
+try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], photos:(s.photos&&typeof s.photos==="object")?s.photos:{}, units:s.units==="mph"?"mph":"kn"}; }catch(e){}
 function allSpots(){ const extra=settings.kept.concat(awaySpots()); return extra.length? SPOTS.concat(extra) : SPOTS; }   // awaySpots() is [] unless away from home (Phase 4)
 function limitsFor(spotId){ return {...settings.comfort, ...(settings.overrides[spotId]||{})}; }
 const CAMS={pacificcity:{name:"Pacific City surf cam",url:"https://www.surf-forecast.com/breaks/Pacific-City_Gas-Chambers/webcams/latest",mi:0.6},
@@ -237,6 +237,27 @@ let openSpot = null;
 let showBeyond = false;
 
 /* ---------- scoring ---------- */
+/* models: Open-Meteo returns several per hour. The score runs on the per-hour median of best match, ECMWF and NBM;
+   GFS and ICON only vote on confidence. Single models disagree by 5–10 kn at the Gorge and coast spots (SPEC §3). */
+const MODELS=[["bm","Best match"],["ecmwf","ECMWF"],["nbm","NBM"],["gfs","GFS"],["icon","ICON"]];
+function median(xs){ const a=xs.filter(x=>x!=null).sort((x,y)=>x-y); if(!a.length) return null; const m=a.length>>1; return a.length%2? a[m] : (a[m-1]+a[m])/2; }
+function consensus(f){
+  // f.spd / f.gst := per-hour median of f.m.bm, f.m.ecmwf, f.m.nbm (whichever have a value that hour); direction stays best match's.
+  // With fewer than two of those in the doc (an older cache, a point outside their domains) the doc comes back unchanged.
+  const M=f.m||{}; const src=["bm","ecmwf","nbm"].map(k=>M[k]).filter(x=>x&&x.spd);
+  if(src.length<2) return f;
+  const med=(key,i)=>{ const v=median(src.map(x=>x[key]&&x[key][i])); return v==null? f[key][i] : Math.round(v*10)/10; };
+  return {...f, spd:f.spd.map((_,i)=>med("spd",i)), gst:f.gst.map((_,i)=>med("gst",i))};
+}
+function modelSpread(f, wi, spd){
+  // Best-window mean per model, over every model the doc carries (up to five). Older docs have no f.m.bm: their spd is best match itself.
+  const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+  const mm=[]; for(const [k,label] of MODELS){ const a=f.m&&f.m[k]&&f.m[k].spd? wi.map(i=>f.m[k].spd[i]).filter(x=>x!=null):[]; if(a.length) mm.push({k,label,v:avg(a)}); }
+  if(!mm.some(x=>x.k==="bm") && mm.length && spd!=null) mm.unshift({k:"bm",label:"Best match",v:spd});
+  if(mm.length<2) return null;
+  const lo=mm.reduce((a,b)=>b.v<a.v?b:a), hi=mm.reduce((a,b)=>b.v>a.v?b:a), d=hi.v-lo.v;
+  return {lo:lo.v, hi:hi.v, loLabel:lo.label, hiLabel:hi.label, n:mm.length, agree: d<=4?"Models agree": d<=8?"Models mixed":"Models disagree"};
+}
 function inSectors(d, secs){ return secs.some(([a,b])=> a<=b ? (d>=a && d<=b) : (d>=a || d<=b)); }
 function dirScore(d, dir){
   if(d==null) return {v:0.5};
@@ -281,17 +302,17 @@ function hourScore(spot, f, i, style){
   const spd=f.spd[i], gst=f.gst[i], dr=f.dir[i], ft=spot.waves&&f.wh? m2ft(f.wh[i]):null;
   const sp=speedScore(spd,st), di=dirScore(dr,spot.dir), gu=gustScore(spd,gst), wv=spot.waves? waveScore(ft,style):{v:1}, wx=wxScore(f.code[i],f.vis[i],f.pop[i]);
   // detail sentences: who owns the limit (spot vs you)
-  if(sp.gate) sp.detail=`${Math.round(spd)} kn sustained — over the ${NUKE} kn safety gate`;
-  else if(sp.why) sp.detail=`${Math.round(spd)} kn vs the ${st.lo}–${st.hi} kn ${st.label.toLowerCase()} band`;
+  if(sp.gate) sp.detail=`${wn(spd)} sustained — over the ${wn(NUKE)} safety gate`;
+  else if(sp.why) sp.detail=`${wn(spd)} vs the ${wrange(st.lo,st.hi)} ${st.label.toLowerCase()} band`;
   if(di.gate) di.detail=`Offshore at this spot (${compass(dr)} wind)`; else if(di.why) di.detail=`${compass(dr)} is cross-off for this beach`;
-  if(gu.gate) gu.detail=`Gusts ${Math.round(gst)} kn — over the 38 kn safety gate`; else if(gu.why) gu.detail=`Gusts ${Math.round(gst)} on ${Math.round(spd)} kn (${(gst/Math.max(spd,1)).toFixed(1)}× ratio)`;
+  if(gu.gate) gu.detail=`Gusts ${wn(gst)} — over the ${wn(38)} safety gate`; else if(gu.why) gu.detail=`Gusts ${wnum(gst)} on ${wn(spd)} (${(gst/Math.max(spd,1)).toFixed(1)}× ratio)`;
   if(wv.why) wv.detail=`Surf ${ft.toFixed(0)} ft for ${st.label.toLowerCase()}`;
   if(wx.gate||wx.why) wx.detail=wx.gate? "Thunderstorms in the forecast": wx.why==="Fog"? "Fog or low visibility":"Likely rain";
   // personal limits (yours, tappable in the UI)
   const mine=[];
-  if(spd!=null && Math.round(spd)>L.maxWind) mine.push({v:0,gate:"Over your max",detail:`${Math.round(spd)} kn, over your ${L.maxWind} kn max`,mine:true});
-  if(gst!=null && Math.round(gst)>L.maxGust) mine.push({v:0,gate:"Gusts over your limit",detail:`Gusts ${Math.round(gst)} kn, over your ${L.maxGust} kn limit`,mine:true});
-  if(spd!=null && spd<L.minWind && spd>=st.lo-4) mine.push({v:0.5,why:"Below your min",detail:`${Math.round(spd)} kn, under your ${L.minWind} kn minimum`,mine:true});
+  if(spd!=null && Math.round(spd)>L.maxWind) mine.push({v:0,gate:"Over your max",detail:`${wn(spd)}, over your ${wn(L.maxWind)} max`,mine:true});
+  if(gst!=null && Math.round(gst)>L.maxGust) mine.push({v:0,gate:"Gusts over your limit",detail:`Gusts ${wn(gst)}, over your ${wn(L.maxGust)} limit`,mine:true});
+  if(spd!=null && spd<L.minWind && spd>=st.lo-4) mine.push({v:0.5,why:"Below your min",detail:`${wn(spd)}, under your ${wn(L.minWind)} minimum`,mine:true});
   if(ft!=null && ft>L.maxSurf) mine.push({v:0.35,why:"Surf over your limit",detail:`Surf ${ft.toFixed(0)} ft, over your ${L.maxSurf} ft limit`,mine:true});
   const parts=[[sp,w.speed],[di,w.dir],[gu,w.gust],[wv,w.wave],[wx,w.wx],...mine.map(m=>[m,1])];
   const gate=parts.find(([p])=>p.gate);
@@ -347,7 +368,7 @@ function disagreement(spot,f){
   const nowLA=new Date().toLocaleString("sv-SE",{timeZone:"America/Los_Angeles"}).slice(0,13).replace(" ","T");
   const i=f.time.findIndex(t=>t.slice(0,13)===nowLA); if(i<0||f.spd[i]==null) return null;
   const ds=Math.abs(o.spd-f.spd[i]); let dd=o.dir!=null&&f.dir[i]!=null? Math.abs(o.dir-f.dir[i])%360:0; if(dd>180) dd=360-dd;
-  if(ds>6 || (o.spd>=6 && dd>60)) return {o, fc:f.spd[i], text:`Station reads ${Math.round(o.spd)} kn`};
+  if(ds>6 || (o.spd>=6 && dd>60)) return {o, fc:f.spd[i], text:`Station reads ${wn(o.spd)}`};
   return null;
 }
 function dayScore(spot, f, day, style){
@@ -364,20 +385,27 @@ function dayScore(spot, f, day, style){
   const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
   const nz=a=>a.filter(x=>x!=null);
   const spd=avg(nz(wi.map(i=>f.spd[i]))), gst=avg(nz(wi.map(i=>f.gst[i]))), dir=f.dir[wi[Math.floor(wi.length/2)]];
-  const gfs=f.m&&f.m.gfs&&nz(wi.map(i=>f.m.gfs.spd[i])), icon=f.m&&f.m.icon&&nz(wi.map(i=>f.m.icon.spd[i]));
-  let agree=null;
-  if(gfs&&gfs.length&&icon&&icon.length){ const d=Math.max(Math.abs(avg(gfs)-spd),Math.abs(avg(icon)-spd),Math.abs(avg(gfs)-avg(icon))); agree= d<=4?"Models agree": d<=8?"Models mixed":"Models disagree"; }
+  const models=modelSpread(f, wi, spd), agree=models? models.agree:null;   // all five models vote; the score itself ran on the median (consensus())
   const wh=f.wh? avg(nz(wi.map(i=>m2ft(f.wh[i])))):null, wp=f.wp? avg(nz(wi.map(i=>f.wp[i]))):null;
   const temp=avg(nz(wi.map(i=>f.temp[i])));
   const gates=win.map(w=>w.gate).filter(Boolean), whys=win.map(w=>w.why).filter(Boolean);
   const reason= gates[0] || mode(whys);
   const dh=win.find(w=>(w.gate||w.why)===reason)||win[0];
   const dis= day===todayLA? disagreement(spot,f):null;
-  return {score:Math.round(best.v*10)/10, from:+f.time[wi[0]].slice(11,13), to:+f.time[wi[wi.length-1]].slice(11,13)+1, spd,gst,dir,agree,wh,wp,temp,reason,detail:dh&&dh.detail,mine:dh&&dh.mine,hours:hs,idx,dis,window:N};
+  return {score:Math.round(best.v*10)/10, from:+f.time[wi[0]].slice(11,13), to:+f.time[wi[wi.length-1]].slice(11,13)+1, spd,gst,dir,agree,models,wh,wp,temp,reason,detail:dh&&dh.detail,mine:dh&&dh.mine,hours:hs,idx,dis,window:N};
 }
 function mode(a){ if(!a.length) return null; const c={}; a.forEach(x=>c[x]=(c[x]||0)+1); return Object.keys(c).sort((x,y)=>c[y]-c[x])[0]; }
 
 /* ---------- helpers ---------- */
+/* wind units: everything internal is knots; these convert for display only (Rider → Wind units) */
+const KN2MPH=1.150779;
+function unitName(){ return settings.units==="mph"?"mph":"kn"; }
+function unitWord(){ return settings.units==="mph"?"mph":"knots"; }
+function toUnit(kn){ return kn==null?null: settings.units==="mph"? kn*KN2MPH : kn; }
+function wnum(kn){ return kn==null?"–":String(Math.round(toUnit(kn))); }        // "18", converted, no unit (for "18g24 kn")
+function wn(kn){ return kn==null?"–":wnum(kn)+" "+unitName(); }                 // "18 kn" / "21 mph"
+function wrange(a,b){ return `${wnum(a)}–${wnum(b)} ${unitName()}`; }            // "14–27 kn"
+function wg(spd,gst){ return `${wnum(spd)}g${wnum(gst)} ${unitName()}`; }        // tile shorthand: average g gust, unit
 const COMPASS=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 function compass(d){ return d==null?"–":COMPASS[Math.round(d/22.5)%16]; }
 function hhmm(h){ const x=((h+11)%12)+1; return x+(h<12?"a":"p"); }
@@ -414,7 +442,7 @@ function narrative(){
     return `<b>Quiet stretch.</b> Nothing within ${mins(Math.max(settings.radius,180))} scores above 4 through ${dayLabel(dayKeys[dayKeys.length-1])[0]}${why?` — mostly "${why.toLowerCase()}"`:""}.`;
   }
   const parts=[];
-  if(good.length){ const g=good[0]; parts.push(`<b>${g.lbl} is the day:</b> ${esc(g.b.spot.name)} on ${reg(g.b)} at ${g.b.r.score.toFixed(1)} (${Math.round(g.b.r.spd)}g${Math.round(g.b.r.gst)} ${compass(g.b.r.dir)}, ${hhmm(g.b.r.from)}–${hhmm(g.b.r.to)}, ${mins(g.b.drive)})`);
+  if(good.length){ const g=good[0]; parts.push(`<b>${g.lbl} is the day:</b> ${esc(g.b.spot.name)} on ${reg(g.b)} at ${g.b.r.score.toFixed(1)} (${wg(g.b.r.spd,g.b.r.gst)} ${compass(g.b.r.dir)}, ${hhmm(g.b.r.from)}–${hhmm(g.b.r.to)}, ${mins(g.b.drive)})`);
     if(good.length>1) parts.push(`${good.slice(1).map(x=>`${x.lbl} ${esc(x.b.spot.name)} ${x.b.r.score.toFixed(1)}`).join(", ")} also work`); }
   if(ok.length) parts.push(`${ok.map(x=>x.lbl).join(" and ")} ${ok.length>1?"are":"is"} marginal`);
   const dead=dayKeys.filter(d=>!bp[d]||bp[d].r.score<4).map(d=>dayLabel(d)[0]);
@@ -473,7 +501,7 @@ function render(){
   const top=[...within].sort((a,b)=> b.r.score-a.r.score || a.drive-b.drive)[0];
   if(!all.length){ hero.innerHTML=""; }
   else if(top && top.r.score>=4){
-    hero.innerHTML=`<div class="hero"><div class="hpic${photoSrc(top.spot)?"":" nophoto"}" data-spot="${esc(top.spot.id)}">${picHTML(top.spot)}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${Math.round(top.r.spd)}g${Math.round(top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
+    hero.innerHTML=`<div class="hero"><div class="hpic${photoSrc(top.spot)?"":" nophoto"}" data-spot="${esc(top.spot.id)}">${picHTML(top.spot)}</div><div class="hbody"><div class="big ${cls(top.r.score)}" style="color:var(--${cls(top.r.score)})">${top.r.score.toFixed(1)}</div><div><div class="lbl">Best bet · ${dayLabel(selDay)[0]}</div><div class="name">${esc(top.spot.name)}</div><div class="meta">${wg(top.r.spd,top.r.gst)} ${compass(top.r.dir)} · ${hhmm(top.r.from)}–${hhmm(top.r.to)} · ${mins(top.drive)} from ${esc(homeInfo().name)} · ${kiteFor(top.r.spd)}m kite</div></div></div></div>`;
   } else {
     const far=beyond.find(x=>x.r.score>=4);
     hero.innerHTML=`<div class="hero"><div class="hbody"><div class="big" style="color:var(--gate)">${top?top.r.score.toFixed(1):"–"}</div><div><div class="lbl">${dayLabel(selDay)[0]} within ${mins(settings.radius)}</div><div class="name">Nothing worth the drive</div><div class="meta">${far? `Further out: ${esc(far.spot.name)} scores ${far.r.score.toFixed(1)} at ${mins(far.drive)}.` : "No spot in the forecast scores above 4 today."}</div></div></div></div>`;
@@ -496,7 +524,7 @@ function row({spot,r,rt,drive}){
   return `<div class="row" id="row-${spot.id}"><button class="head" aria-expanded="${openSpot===spot.id}" data-open="${spot.id}">
     <div class="pic${photoSrc(spot)?"":" nophoto"}">${picHTML(spot)}<div class="score ${c}">${r.score.toFixed(1)}</div></div>
     <div class="body"><div class="name">${esc(spot.name)}<span>${esc(spot.region)}${spot.auto?" · auto":""}</span></div>
-      <div class="wind">${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)} · ${hhmm(r.from)}–${hhmm(r.to)}${r.wh!=null?` · ${r.wh.toFixed(0)}ft`:""} ${chips.join(" ")}</div></div>
+      <div class="wind">${wg(r.spd,r.gst)} ${compass(r.dir)} · ${hhmm(r.from)}–${hhmm(r.to)}${r.wh!=null?` · ${r.wh.toFixed(0)}ft`:""} ${chips.join(" ")}</div></div>
     <div class="drive">${mins(drive)}<small>${drive>settings.radius?"beyond":(settings.home==="X"||spot.kept||spot.auto?"est.":"drive")}</small></div></button>
     <div id="detail-${spot.id}"${openSpot===spot.id?"":" hidden"}>${openSpot===spot.id?detail({spot,r,drive}):""}</div></div>`;
 }
@@ -505,8 +533,10 @@ function detail({spot,r,f}){
   const h=r.hours; const W=640,H=150,pad=22,bw=(W-pad*2)/h.length;
   const maxS=Math.max(30,...h.map(x=>f.gst[x.i]||0))+2;
   const y=v=>H-28-(v/maxS)*(H-50);
-  let svg=`<svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="Hourly wind for ${esc(spot.name)}">`;
-  [10,20,30].forEach(v=>{ if(v<maxS) svg+=`<line x1="${pad}" x2="${W-pad}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pad-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${v}</text>`; });
+  let svg=`<svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="Hourly wind for ${esc(spot.name)} in ${unitWord()}">`;
+  const ticks= settings.units==="mph"? [10,20,30,40].map(v=>v/KN2MPH) : [10,20,30];   // gridlines on round numbers in the unit shown
+  ticks.forEach(v=>{ if(v<maxS) svg+=`<line x1="${pad}" x2="${W-pad}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pad-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${wnum(v)}</text>`; });
+  svg+=`<text x="${pad-4}" y="12" font-size="9" text-anchor="end" fill="var(--muted)" font-family="var(--body)">${unitName()}</text>`;
   const winStart=h.findIndex(x=>+f.time[x.i].slice(11,13)===r.from);
   if(winStart>=0) svg+=`<rect x="${pad+winStart*bw}" y="8" width="${bw*3}" height="${H-36}" fill="var(--accent)" opacity=".12" rx="3"/>`;
   h.forEach((x,k)=>{ const s=f.spd[x.i]||0,g=f.gst[x.i]||0,d=f.dir[x.i]; const col=`var(--${cls(x.v,x.gate)})`; const cx=pad+k*bw+bw/2;
@@ -516,7 +546,7 @@ function detail({spot,r,f}){
     const hr=+f.time[x.i].slice(11,13); if(hr%3===1) svg+=`<text x="${cx}" y="${H-2}" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--mono)">${hhmm(hr)}</text>`;
   });
   svg+=`</svg>`;
-  const plain=(spd,gst,dir)=> spd==null? "–" : `${Math.round(spd)} kn${gst!=null&&gst>spd+1?` gusting ${Math.round(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
+  const plain=(spd,gst,dir)=> spd==null? "–" : `${wn(spd)}${gst!=null&&gst>spd+1?` gusting ${wnum(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
   const st=latestStation(spot.id);
   const kv=[];
   if(st){ const stale=st.age_min>OBS_MAX_AGE; kv.push([stale?`Wind measured · ${agoText(st.age_min)}`:`Wind measured now`,`${plain(st.spd,st.gst,st.dir)} <small>${esc(st.name)}, ${st.dist_mi} mi away, ${agoText(st.age_min)}${st.gst==null?" · no gust data":""}${stale?" · too old to score":""}</small>`, stale?"stale":""]); }
@@ -525,22 +555,25 @@ function detail({spot,r,f}){
   const ni=forecasts[spot.id].time.findIndex(t=>t.slice(0,13)===nowLA); const raw=forecasts[spot.id];
   const at=(k)=> ni>=0&&ni+k<raw.time.length? [raw.spd[ni+k],raw.gst[ni+k],raw.dir[ni+k],hhmm(+raw.time[ni+k].slice(11,13))] : null;
   const h1=at(1), h3=at(3), h5=at(5);
-  kv.push(["Wind forecast · next hour", h1? `${plain(h1[0],h1[1],h1[2])} <small>model, for ${h1[3]}</small>` : "–"],
-          ["Wind forecast · in 3 hours", h3? `${plain(h3[0],h3[1],h3[2])} <small>model, for ${h3[3]}</small>` : "–"],
-          ["Wind forecast · in 5 hours", h5? `${plain(h5[0],h5[1],h5[2])} <small>model, for ${h5[3]}</small>` : "–"],
+  const src= raw.m&&raw.m.ecmwf&&raw.m.nbm? "3-model median":"model";   // older cached docs carry best match alone
+  kv.push(["Wind forecast · next hour", h1? `${plain(h1[0],h1[1],h1[2])} <small>${src}, for ${h1[3]}</small>` : "–"],
+          ["Wind forecast · in 3 hours", h3? `${plain(h3[0],h3[1],h3[2])} <small>${src}, for ${h3[3]}</small>` : "–"],
+          ["Wind forecast · in 5 hours", h5? `${plain(h5[0],h5[1],h5[2])} <small>${src}, for ${h5[3]}</small>` : "–"],
           [`Best window · ${hhmm(r.from)}–${hhmm(r.to)}`,`${plain(r.spd,r.gst,r.dir)} <small>the best ${r.window}-hour stretch ${(l=>l==="Today"||l==="Tomorrow"?l.toLowerCase():new Date(selDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",timeZone:"America/Los_Angeles"}))(dayLabel(selDay)[0])}; this is what the score rates</small>`],
-          ["Kite",`${kiteFor(r.spd)}m <small>for ${settings.weightLb} lb in ${Math.round(r.spd)} kn</small>`],["Air",`${Math.round(r.temp)}°F`]);
+          ["Kite",`${kiteFor(r.spd)}m <small>for ${settings.weightLb} lb in ${wn(r.spd)}</small>`],["Air",`${Math.round(r.temp)}°F`]);
   const bwv=spot.waves? buoyWaves(spot.id):null;
   if(r.wh!=null || bwv) kv.push(["Surf",`${r.wh!=null? `${r.wh.toFixed(1)}ft @ ${r.wp?r.wp.toFixed(0):"–"}s`:"–"}${bwv? ` <small>buoy reads ${bwv.wvht_ft.toFixed(1)} ft · ${esc(bwv.name)}, ${bwv.dist_mi} mi away, ${agoText(bwv.age_min)}</small>`:""}`]);
   if(r.agree) kv.push(["Confidence",r.agree]);
+  if(r.models){ const M=r.models, same=wnum(M.lo)===wnum(M.hi);
+    kv.push(["Models",`${same? wn(M.hi): wrange(M.lo,M.hi)} <small>${same? `all ${M.n} within a knot`: `${M.hiLabel} highest, ${M.loLabel} lowest`} · best-window mean of ${M.n} models; the score runs on the hourly median of best match, ECMWF and NBM</small>`]); }
   const L=limitsFor(spot.id), ov=settings.overrides[spot.id]||{};
-  const hold= r.detail? `<p class="hold"><b>What's holding it back:</b> ${esc(r.detail)}${r.mine?` · <button class="link" data-limits="${spot.id}">adjust your limits</button>`:""}</p>` : (r.score>=7? `<p class="hold"><b>Nothing holding it back.</b> ${r.window}-hour window at ${Math.round(r.spd)} kn.</p>`:"");
-  const dis= r.dis? `<p class="hold warn"><b>Station disagrees:</b> ${esc(r.dis.o.name)} (${r.dis.o.dist_mi} mi) reads ${Math.round(r.dis.o.spd)} kn ${compass(r.dis.o.dir)} while the model says ${Math.round(r.dis.fc)} kn for this hour. Today's score uses the station.</p>`:"";
+  const hold= r.detail? `<p class="hold"><b>What's holding it back:</b> ${esc(r.detail)}${r.mine?` · <button class="link" data-limits="${spot.id}">adjust your limits</button>`:""}</p>` : (r.score>=7? `<p class="hold"><b>Nothing holding it back.</b> ${r.window}-hour window at ${wn(r.spd)}.</p>`:"");
+  const dis= r.dis? `<p class="hold warn"><b>Station disagrees:</b> ${esc(r.dis.o.name)} (${r.dis.o.dist_mi} mi) reads ${wn(r.dis.o.spd)} ${compass(r.dis.o.dir)} while the forecast says ${wn(r.dis.fc)} for this hour. Today's score uses the station.</p>`:"";
   const cam=CAMS[spot.id]||spot.cam; 
-  const plan=`Heading to ${spot.name} ${dayLabel(selDay)[0]} ${hhmm(r.from)}–${hhmm(r.to)}, ${Math.round(r.spd)}g${Math.round(r.gst)} ${compass(r.dir)}. Directions: ${mapsUrl(spot)}`;
+  const plan=`Heading to ${spot.name} ${dayLabel(selDay)[0]} ${hhmm(r.from)}–${hhmm(r.to)}, ${wg(r.spd,r.gst)} ${compass(r.dir)}. Directions: ${mapsUrl(spot)}`;
   return `${svg}<div class="kv">${kv.map(([k,v,c])=>`<div${c?` class="${c}"`:""}><b>${k}</b><span>${v}</span></div>`).join("")}</div>${hold}${dis}
     ${spot.notes?`<p>${esc(spot.notes)}</p>`:""}<p><b>Parking:</b> ${esc(spot.parking||(spot.kept||spot.auto?"not noted":""))}${spot.pass?" · State Parks pass":""}${cam?` · <a href="${cam.url}" target="_blank" rel="noopener">Cam · ${esc(cam.name)} · ${cam.mi} mi</a>`:""}</p>
-    ${Object.keys(ov).length? `<p class="hold"><b>Your limits here:</b> ${Object.entries(ov).map(([k,v])=>`${k} ${v}`).join(", ")} · <button class="link" data-limits="${spot.id}">edit</button></p>`:""}
+    ${Object.keys(ov).length? `<p class="hold"><b>Your limits here:</b> ${Object.entries(ov).map(([k,v])=>`${k} ${["minWind","maxWind","maxGust"].includes(k)? wn(v): v}`).join(", ")} · <button class="link" data-limits="${spot.id}">edit</button></p>`:""}
     <div class="actions"><a class="btn primary" href="${mapsUrl(spot)}" target="_blank" rel="noopener">Directions (Google)</a><a class="btn" href="https://maps.apple.com/?saddr=${homeInfo().lat},${homeInfo().lon}&daddr=${spot.plat},${spot.plon}&dirflg=d" target="_blank" rel="noopener">Apple Maps</a><button class="btn" data-share="${esc(plan)}">Share plan</button><button class="btn" data-check="${spot.id}">Checklist</button>${ov&&Object.keys(ov).length?"":`<button class="btn" data-limits="${spot.id}">Limits for this spot</button>`}${spot.kept?`<button class="btn" data-unkeep="${spot.id}">Remove this spot</button>`:""}${spot.auto?`<button class="btn" data-keep="${spot.id}">Keep this spot</button>`:""}<button class="btn" data-photo="${spot.id}">Use my photo</button>${riderPhotos[spot.id]?`<button class="btn" data-unphoto="${spot.id}">Remove photo</button>`:""}</div>
     ${spot.auto?`<p class="hold" style="margin-top:8px"><b>Auto</b> · found on OpenStreetMap (${esc((spot.kind||"spot").toLowerCase())}${spot.osm?`, <a href="https://www.openstreetmap.org/${{n:"node",w:"way",r:"relation"}[spot.osm[0]]}/${spot.osm.slice(1)}" target="_blank" rel="noopener">map</a>`:""}) · ${spot.facing!=null?`faces ${compass(spot.facing)}, read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"}; direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"shoreline direction unknown, so wind direction isn't scored here; Keep it and pick which way it faces"} · drive time is a road-distance estimate${spot.waves?"":" · inland water, no surf forecast"}.${riderPhotos[spot.id]?" Photo: yours.":spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}
     ${spot.kept?`<p class="hold" style="margin-top:8px"><b>Kept spot</b> · ${spot.facing!=null?`faces ${compass(spot.facing)}${spot.facingSrc?` (read off the ${spot.facingSrc==="coastline"?"coastline":"shoreline"})`:""} · direction rules inferred from that (onshore ±30° best, ±80° works, offshore is the reverse)`:"facing unknown, so wind direction isn't scored here"} · drive times are road-distance estimates${spot.osm?" · from OpenStreetMap":""}. Saved ${new Date(spot.addedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}${syncState.key?", synced":""}.${riderPhotos[spot.id]?" Photo: yours.":spot.photoCredit?` Photo: ${esc(spot.photoCredit)}.`:""}</p>`:""}`;
@@ -553,7 +586,7 @@ function sheet(title, body){ host.innerHTML=`<div class="sheet" id="sheet"><div>
 function hint(sec,label,x){
   if(!x) return "";
   const l=label.toLowerCase();
-  if(sec==="gear"&&l.startsWith("kite")) return `Bring the ${kiteFor(x.r.spd)}m first; ${Math.round(x.r.spd)}g${Math.round(x.r.gst)} forecast`;
+  if(sec==="gear"&&l.startsWith("kite")) return `Bring the ${kiteFor(x.r.spd)}m first; ${wg(x.r.spd,x.r.gst)} forecast`;
   if(sec==="wear"&&l.startsWith("wetsuit")) return `${Math.round(x.r.temp)}°F air, water in the 50s`;
   return "";
 }
@@ -655,12 +688,13 @@ function keepSheet(pre){
   host.querySelectorAll("#sheet [data-unkeep]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); unkeepSpot(b.dataset.unkeep); keepSheet(); });
 }
 const COMFORT_DEF=[["minWind","Minimum wind I'll go out for","kn",6,20,1],["maxWind","Maximum sustained wind","kn",18,40,1],["maxGust","Maximum gust","kn",18,45,1],["maxSurf","Maximum surf","ft",1,15,1],["minHours","Minimum session length","h",1,6,1]];
+function limitText(v,u){ return u==="kn"? wn(v) : v+" "+u; }   // sliders step in knots; the chip shows the rider's unit
 function comfortSliders(vals,prefix){
-  return `<ul class="check">${COMFORT_DEF.map(([k,l,u,lo,hi,step])=>`<li style="display:block"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${l}</b><span class="chip" id="${prefix}l-${k}">${vals[k]} ${u}</span></div><input type="range" min="${lo}" max="${hi}" step="${step}" value="${vals[k]}" data-c="${k}" data-u="${u}" style="width:100%;accent-color:var(--accent)"></li>`).join("")}
+  return `<ul class="check">${COMFORT_DEF.map(([k,l,u,lo,hi,step])=>`<li style="display:block"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${l}</b><span class="chip" id="${prefix}l-${k}">${limitText(vals[k],u)}</span></div><input type="range" min="${lo}" max="${hi}" step="${step}" value="${vals[k]}" data-c="${k}" data-u="${u}" style="width:100%;accent-color:var(--accent)"></li>`).join("")}
   <li><input type="checkbox" id="${prefix}-stretch" ${vals.stretch!==false?"checked":""}><label for="${prefix}-stretch">I'll drive further for a great day <small>(spots scoring 8+ show even when beyond the radius)</small></label></li></ul>`;
 }
 function bindComfort(prefix, target, after){
-  host.querySelectorAll(`input[data-c]`).forEach(r=>r.oninput=()=>{ target[r.dataset.c]=+r.value; document.getElementById(prefix+"l-"+r.dataset.c).textContent=r.value+" "+r.dataset.u; after(); });
+  host.querySelectorAll(`input[data-c]`).forEach(r=>r.oninput=()=>{ target[r.dataset.c]=+r.value; document.getElementById(prefix+"l-"+r.dataset.c).textContent=limitText(+r.value,r.dataset.u); after(); });
   const st=document.getElementById(prefix+"-stretch"); if(st) st.onchange=()=>{ target.stretch=st.checked; after(); };
 }
 function limitsSheet(spotId){
@@ -693,7 +727,7 @@ function alertsSheet(){
       <li style="display:block"><b>Days I can go</b><div class="dayspick" style="margin-top:6px">${DN.map((n,i)=>`<button data-d="${i}" aria-pressed="${A.days.includes(i)}">${n}</button>`).join("")}</div></li>
       <li style="display:block"><div style="display:flex;justify-content:space-between"><b>Deliver at</b><span class="chip" id="al-hour">${hhmm(A.hour)}</span></div><input type="range" min="6" max="21" step="1" value="${A.hour}" data-a="hour" style="width:100%;accent-color:var(--accent)"></li>
       <li><input type="checkbox" id="al-sameDay" ${A.sameDay?"checked":""}><label for="al-sameDay">Also alert me in the morning if today turns good</label></li>
-      <li><input type="checkbox" id="al-confidence" ${A.confidence?"checked":""}><label for="al-confidence">Only when the forecast models agree <small>skips the 9s that two models disagree about</small></label></li>
+      <li><input type="checkbox" id="al-confidence" ${A.confidence?"checked":""}><label for="al-confidence">Only when the forecast models agree <small>skips the 9s the five models disagree about</small></label></li>
       <li style="display:block"><div style="display:flex;justify-content:space-between"><b>At most</b><span class="chip" id="al-cap">${A.cap} a day</span></div><input type="range" min="1" max="3" step="1" value="${A.cap}" data-a="cap" style="width:100%;accent-color:var(--accent)"></li>
       <li><input type="checkbox" id="al-email" ${A.email?"checked":""}><label for="al-email">Sunday 6pm weekly outlook by email</label></li>
     </ul>
@@ -770,13 +804,15 @@ function applyDayHash(){
 function widgetMock(){
   const all=computeAll().filter(x=>x.drive<=settings.radius); const t=all[0];
   if(!t) return `<div class="widget"><div class="w1">Best bet · ${dayLabel(selDay)[0]}</div><div class="w2">–</div><div><div class="w3">Nothing in range</div><div class="w4">${esc(homeInfo().name)}</div></div></div>`;
-  return `<div class="widget"><div class="w1">Best bet · ${dayLabel(selDay)[0]}</div><div class="w2">${t.r.score.toFixed(1)}</div><div><div class="w3">${esc(t.spot.name.split(" /")[0])}</div><div class="w4">${Math.round(t.r.spd)}g${Math.round(t.r.gst)} ${compass(t.r.dir)} · ${hhmm(t.r.from)}–${hhmm(t.r.to)} · ${mins(t.drive)}</div></div></div>`;
+  return `<div class="widget"><div class="w1">Best bet · ${dayLabel(selDay)[0]}</div><div class="w2">${t.r.score.toFixed(1)}</div><div><div class="w3">${esc(t.spot.name.split(" /")[0])}</div><div class="w4">${wg(t.r.spd,t.r.gst)} ${compass(t.r.dir)} · ${hhmm(t.r.from)}–${hhmm(t.r.to)} · ${mins(t.drive)}</div></div></div>`;
 }
 function riderSheet(){
   const ks=[5,6,7,8,9,10,11,12,13,14,15,17];
   sheet("Rider", `<div class="field"><label for="w">Weight (lb)</label><input type="number" id="w" value="${settings.weightLb}" min="90" max="320"></div>
     <div class="field"><label>Kites in the quiver (m²)</label><div class="kites" id="kites">${ks.map(k=>`<button data-k="${k}" aria-pressed="${settings.kites.includes(k)}">${k}</button>`).join("")}</div></div>
     <p style="color:var(--muted);font-size:13px">Kite suggestions use weight × 2.175 ÷ wind knots, then snap to the nearest kite you own.</p>
+    <div class="field"><label>Wind units</label><div class="kites" id="units"><button data-u="kn" aria-pressed="${settings.units!=="mph"}">Knots</button><button data-u="mph" aria-pressed="${settings.units==="mph"}">mph</button></div></div>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 6px">Changes every wind figure on the page (tiles, detail, narrative, your limits). Scoring always runs in knots underneath, and the setting follows you with sync.</p>
     <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 4px;font-family:var(--body)">Comfort · what you're happy riding</h3>
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">The style switch on the home screen says what kind of day you want. These say what you'll put up with. Each can be overridden per spot from the spot's detail.</p>
     ${comfortSliders(settings.comfort,"c")}
@@ -789,12 +825,13 @@ function riderSheet(){
   bindComfort("c", settings.comfort, ()=>{saveSettings(); render();});
   document.getElementById("resetComfort").onclick=()=>{ settings.comfort={...DEFAULT_COMFORT}; saveSettings(); render(); riderSheet(); };
   document.getElementById("w").onchange=e=>{ settings.weightLb=+e.target.value||185; saveSettings(); render(); };
+  host.querySelectorAll("#units button").forEach(b=>b.onclick=()=>{ settings.units=b.dataset.u==="mph"?"mph":"kn"; saveSettings(); updateSub(); render(); riderSheet(); });
   host.querySelectorAll("#kites button").forEach(b=>b.onclick=()=>{ const k=+b.dataset.k; settings.kites=settings.kites.includes(k)? settings.kites.filter(x=>x!==k):[...settings.kites,k].sort((a,b)=>a-b); b.setAttribute("aria-pressed",settings.kites.includes(k)); saveSettings(); render(); });
 }
 function scaleSVG(k, rows){
   // Horizontal scale with the factor's zones (for the current style) and a dot per spot at its best-window value.
   const st=STYLES[settings.style]; const W=640,H=64,pad=10; let min,max,zones,unit,val,fmt;
-  if(k==="speed"){ min=0;max=40;unit="kn"; zones=[[0,st.lo-4,"poor","Too light"],[st.lo-4,st.lo,"ok","Light"],[st.lo,st.hi,"good","Rides"],[st.hi,st.hi+6,"ok","Strong"],[st.hi+6,NUKE,"poor","Too strong"],[NUKE,40,"gate","Gate"]]; val=r=>r.spd; fmt=v=>Math.round(v)+""; }
+  if(k==="speed"){ min=0;max=40;unit=unitName(); zones=[[0,st.lo-4,"poor","Too light"],[st.lo-4,st.lo,"ok","Light"],[st.lo,st.hi,"good","Rides"],[st.hi,st.hi+6,"ok","Strong"],[st.hi+6,NUKE,"poor","Too strong"],[NUKE,40,"gate","Gate"]]; val=r=>r.spd; fmt=v=>wnum(v); }
   else if(k==="gust"){ min=1;max=2.2;unit="× avg"; zones=[[1,1.3,"good","Clean"],[1.3,1.5,"ok","Bumpy"],[1.5,1.9,"poor","Gusty"],[1.9,2.2,"poor","Bad"]]; val=r=> r.spd>=5? Math.min(r.gst/Math.max(r.spd,1),2.2):null; fmt=v=>v.toFixed(1); }
   else if(k==="wave"){ min=0;max=12;unit="ft"; zones= settings.style==="wave"? [[0,1.5,"ok","Flat"],[1.5,7,"good","Waves"],[7,9,"ok","Big"],[9,12,"poor","Huge"]] : settings.style==="foil"? [[0,3,"good","OK"],[3,5,"ok","Bumpy"],[5,12,"poor","Big"]] : [[0,5,"good","OK"],[5,8,"ok","Bumpy"],[8,12,"poor","Big"]]; val=r=>r.wh; fmt=v=>v.toFixed(0); }
   else return "";
@@ -813,7 +850,7 @@ function howSheet(){
   const rows=computeAll().filter(x=>x.drive<=settings.radius);
   const st=STYLES[settings.style];
   const dirRows=rows.map(r=>`${esc(r.spot.name.split(" /")[0].split(" (")[0])} ${compass(r.r.dir)}${inSectors(r.r.dir,r.spot.dir.off)?" (offshore)":inSectors(r.r.dir,r.spot.dir.best)?" (side-on)":inSectors(r.r.dir,r.spot.dir.work)?" (works)":" (cross-off)"}`).join(" · ");
-  const wl=[["speed","Wind speed",`${st.label}: rides ${st.lo}–${st.hi} kn, sweet spot ${st.peak}. Dots are each spot's best window ${dayLabel(selDay)[0].toLowerCase()}.`],
+  const wl=[["speed","Wind speed",`${st.label}: rides ${wrange(st.lo,st.hi)}, sweet spot ${wnum(st.peak)}. Dots are each spot's best window ${dayLabel(selDay)[0].toLowerCase()}.`],
             ["dir","Direction","against the spot's own rules. Side-on is best, cross-shore is fine, offshore zeroes the score outright."+(dirRows?`<br>${dayLabel(selDay)[0]}: ${dirRows}`:"")],
             ["gust","Gusts","gust ÷ average wind. Up to 1.3× is clean; 1.9× and worse is a penalty."],
             ["wave","Surf",`(coast spots) ${settings.style==="wave"?"1.5–7 ft is the target for wave riding":settings.style==="foil"?"penalized above 3 ft for foil":"penalized above 5 ft for freeride"}.`],
@@ -822,10 +859,10 @@ function howSheet(){
   sheet("How it scores", `<div class="how"><p>Every daylight hour (7a–7p) at every spot gets a 0–10 score. The day's score is its best ${settings.comfort.minHours}-hour window, and that window is what the row shows. The slider sets how much a factor <em>counts</em>; the scale under it shows what the factor <em>measures</em> and where each spot sits right now.</p>
   <ul class="check" id="weights">${wl.map(([k,n,d])=>`<li style="display:block"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${n}</b><span class="chip" id="wl-${k}">${lab(W[k])}</span></div><input type="range" min="0" max="2" step="0.25" value="${W[k]}" data-w="${k}" style="width:100%;accent-color:var(--accent)"><div class="ticks"><span>Ignored</span><span>Light</span><span>Normal</span><span>Heavy</span><span>Double</span></div>${scaleSVG(k,rows)}<small style="color:var(--muted)">${d}</small></li>`).join("")}</ul>
   <div class="actions" style="margin:10px 0"><button class="btn" id="resetW">Reset weights</button></div>
-  <p><b>Reading the rows:</b> "18g24 NW · 2p–5p" means 18 knots average, gusting 24, wind from the northwest, best between 2 and 5 pm. Open a row for the plain-English version.</p>
-  <p>Three hard gates set a score to 0 no matter what: offshore wind, 35+ kn sustained or 38+ gusts, and thunderstorms.</p>
-  <p><b>Confidence</b> compares three forecast models over the best window. "Models agree" means they're within 4 kn of each other.</p>
-  <p>Forecasts are Open-Meteo (NOAA HRRR/NBM blend, GFS, ICON) and its marine model, refreshed every time you open the app. Drive times from Lake Oswego and Pacific City are typical, not live; the Directions button opens Google Maps with current traffic.</p>
+  <p><b>Reading the rows:</b> "${wg(18,24)} NW · 2p–5p" means ${wnum(18)} ${unitWord()} average, gusting ${wnum(24)}, wind from the northwest, best between 2 and 5 pm. Open a row for the plain-English version. Units switch under Rider.</p>
+  <p>Three hard gates set a score to 0 no matter what: offshore wind, ${wnum(NUKE)}+ ${unitName()} sustained or ${wnum(38)}+ gusts, and thunderstorms.</p>
+  <p><b>Which forecast.</b> The wind the score rates is, hour by hour, the median of three models: Open-Meteo's best match, ECMWF and NOAA's NBM. Single models miss by 5–10 ${unitName()==="kn"?"kn":"mph"} at the Gorge and on the coast; the middle one is usually closest and never the hopeful outlier. <b>Confidence</b> compares five models (those three plus GFS and ICON) over the best window: "Models agree" means they're within ${wn(4)} of each other, and the spot detail shows the spread.</p>
+  <p>Forecasts are Open-Meteo (best match, ECMWF IFS, NBM, GFS, ICON) and its marine model, refreshed every time you open the app. Drive times from Lake Oswego and Pacific City are typical, not live; the Directions button opens Google Maps with current traffic.</p>
   <p style="font-size:12px;color:var(--muted)">Spot photos via Wikimedia Commons: Bayocean Spit: Tedder (CC BY-SA 4.0); Cape Lookout: Dougtone (CC BY-SA 2.0); Floras Lake: Bastique (CC BY-SA 3.0); Florence South Jetty: Bonnie Moreland from Oregon, United States (Public domain); Fort Stevens / Clatsop Spit: Flickr contributor (CC BY 2.0); Gearhart: Meronim (CC BY-SA 3.0); Hood River Sandbar: Adam Jones, Ph.D. (CC BY-SA 3.0); Manzanita / Nehalem Bay: Bob Heims, U.S. Army Corps of Engineers (Public domain); Newport South Jetty: User:Cacophony (CC BY 2.5); Oceanside: M.O. Stevens (CC BY-SA 3.0); Pacific City: Ennetws (Public domain); Roads End, Lincoln City: Rick Obst (CC BY 4.0); Rockaway Beach: Gary Halvorson, Oregon State Archives (CC BY 4.0); Rufus (Rock Pile): Joe Mabel (CC BY-SA 4.0); Stevenson: LegalTech (CC BY 4.0).</p></div>`);
   host.querySelectorAll("[data-w]").forEach(r=>r.oninput=()=>{ settings.weights[r.dataset.w]=+r.value; document.getElementById("wl-"+r.dataset.w).textContent=lab(+r.value); saveSettings(); render(); });
   document.getElementById("resetW").onclick=()=>{ settings.weights={...DEFAULT_WEIGHTS}; saveSettings(); render(); howSheet(); };
@@ -1213,7 +1250,7 @@ async function syncFetch(method, body, path="/v1/settings"){
 function applyRemote(doc){
   // Server copy wins only when it is newer; defaults are re-merged exactly as on page load.
   const s=doc.settings||{};
-  settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], photos:(s.photos&&typeof s.photos==="object")?s.photos:(settings.photos||{}), check:s.check||settings.check, updatedAt:doc.updatedAt};
+  settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], photos:(s.photos&&typeof s.photos==="object")?s.photos:(settings.photos||{}), check:s.check||settings.check, units:s.units==="mph"?"mph":"kn", updatedAt:doc.updatedAt};
   refreshKeptDrives(); syncState.remoteUpdatedAt=doc.updatedAt; saveLocal(); syncSave();
   ensureKeptForecasts();
 }
@@ -1396,10 +1433,12 @@ function ingest(docs, fetchedAt){
   if(!selDay||!dayKeys.includes(selDay)) selDay=dayKeys[0];
   const fa=new Date(fetchedAt||first.fetchedAt);
   const ageMin=Math.round((Date.now()-fa.getTime())/60000);
-  const age= ageMin<60? ageMin+" min ago" : ageMin<1440? Math.round(ageMin/60)+"h ago" : Math.round(ageMin/1440)+"d ago";
-  document.getElementById("sub").textContent="Updated "+age+(ageMin>360?" (stale)":"")+" · knots · "+allSpots().length+" spots";
+  subAge= (ageMin<60? ageMin+" min ago" : ageMin<1440? Math.round(ageMin/60)+"h ago" : Math.round(ageMin/1440)+"d ago")+(ageMin>360?" (stale)":"");
+  updateSub();
   render();
 }
+let subAge=null;
+function updateSub(){ if(subAge!=null) document.getElementById("sub").textContent="Updated "+subAge+" · "+unitWord()+" · "+allSpots().length+" spots"; }   // header line; re-done when the units change
 const NWS_STATIONS = {"stevenson":[{"id":"ODT78","name":"I84 WB at Cascade Locks MP44.57","kind":"nws","lat":45.66931,"lon":-121.88484,"dist_mi":1.8},{"id":"LGFO3","name":"LOG CREEK","kind":"nws","lat":45.49658,"lon":-121.89646,"dist_mi":13.7}],"hoodriver":[{"id":"K4S2","name":"Ken Jernstedt Airfield","kind":"nws","lat":45.67457,"lon":-121.53493,"dist_mi":3.0},{"id":"PNGO","name":"PINEGROVE","kind":"nws","lat":45.65222,"lon":-121.50917,"dist_mi":4.4}],"rufus":[{"id":"E2137","name":"EW2137 Wasco","kind":"nws","lat":45.62733,"lon":-120.60017,"dist_mi":7.8},{"id":"E0859","name":"EW0859 Centerville","kind":"nws","lat":45.73917,"lon":-120.92683,"dist_mi":9.9}],"fortstevens":[{"id":"KAST","name":"Astoria, Astoria Regional Airport","kind":"nws","lat":46.15694,"lon":-123.8825,"dist_mi":5.2}],"gearhart":[{"id":"KAST","name":"Astoria, Astoria Regional Airport","kind":"nws","lat":46.15694,"lon":-123.8825,"dist_mi":9.1},{"id":"ODT09","name":"US26 WB at Quartz Creek MP24.23","kind":"nws","lat":45.84225,"lon":-123.51849,"dist_mi":23.6}],"manzanita":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":19.3},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":21.7}],"rockaway":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":12.9},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":15.0}],"bayocean":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":8.7},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":10.1}],"oceanside":[{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":8.1},{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":8.1}],"capelookout":[{"id":"KTMK","name":"Tillamook, Tillamook Airport","kind":"nws","lat":45.41806,"lon":-123.81444,"dist_mi":8.5},{"id":"TMKO3","name":"TILLAMOOK","kind":"nws","lat":45.45722,"lon":-123.8025,"dist_mi":10.5}],"pacificcity":[{"id":"AT297","name":"PACCTY-2 Pacific City","kind":"nws","lat":45.19683,"lon":-123.96733,"dist_mi":0.3},{"id":"CDFO3","name":"CEDAR","kind":"nws","lat":45.21167,"lon":-123.77194,"dist_mi":9.7}],"roadsend":[{"id":"AP682","name":"W7KKE-3 Road's End","kind":"nws","lat":45.011,"lon":-124.00583,"dist_mi":0.2},{"id":"AT297","name":"PACCTY-2 Pacific City","kind":"nws","lat":45.19683,"lon":-123.96733,"dist_mi":13.1}],"newport":[{"id":"KONP","name":"Newport, Newport Municipal Airport","kind":"nws","lat":44.58028,"lon":-124.05806,"dist_mi":2.1},{"id":"AS531","name":"YACHTS Yachats","kind":"nws","lat":44.34303,"lon":-124.09212,"dist_mi":18.5}],"florence":[],"floras":[]};
 let lastFetchedAt=null, refreshing=false;
 function setRefreshUI(state,msg){
@@ -1414,19 +1453,23 @@ async function fetchJSON(url, ms=25000){
   try{ const r=await fetch(url,{signal:c.signal}); if(!r.ok) throw new Error(r.status); return await r.json(); } finally{ clearTimeout(t); }
 }
 const rnd=(xs,nd=1)=>xs.map(v=>v==null?null:+v.toFixed(nd));
+// Open-Meteo model ids -> the doc's f.m keys. best match, ECMWF and NBM feed the score (hourly median, consensus()); GFS and ICON only vote on confidence.
+const MODEL_IDS={bm:"best_match",ecmwf:"ecmwf_ifs025",nbm:"ncep_nbm_conus",gfs:"gfs_seamless",icon:"icon_seamless"};
 async function fetchForecasts(list){
-  // One Open-Meteo call for all spots (multi-location), one marine call for the coast spots. `list` limits it (discovered spots).
+  // One Open-Meteo call for all spots (multi-location, five models), one marine call for the coast spots. `list` limits it (discovered spots).
   const all=list||allSpots();
   const lat=all.map(s=>s.lat).join(","), lon=all.map(s=>s.lon).join(",");
-  const q=`latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code&models=best_match,gfs_seamless,icon_seamless&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
-  const w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+q, 40000);
+  const query=models=>`latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code&models=${models}&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  let w;
+  try{ w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+query(Object.values(MODEL_IDS).join(",")), 40000); }
+  catch(e){ if(e&&e.name==="AbortError") throw e; console.warn("five-model forecast call failed, retrying with three",e); w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+query("best_match,gfs_seamless,icon_seamless"), 40000); }   // a model the API rejects must never take the page down
   const arr=Array.isArray(w)?w:[w];
   const now=new Date().toISOString().slice(0,19)+"+00:00";
   const docs={};
   all.forEach((s,i)=>{ const d=arr[i]; if(!d||!d.hourly) return; const h=d.hourly; const col=(n,m="best_match")=>h[`${n}_${m}`]||h[n]||new Array(h.time.length).fill(null); const cur=d.current||{}; const cv=n=>cur[`${n}_best_match`]??cur[n]??null;
-    docs[s.id]={spotId:s.id,fetchedAt:now,time:h.time,spd:rnd(col("wind_speed_10m")),gst:rnd(col("wind_gusts_10m")),dir:rnd(col("wind_direction_10m"),0),temp:rnd(col("temperature_2m"),0),pop:rnd(col("precipitation_probability"),0),code:col("weather_code"),vis:rnd(col("visibility"),0),
-      m:{gfs:{spd:rnd(col("wind_speed_10m","gfs_seamless")),gst:rnd(col("wind_gusts_10m","gfs_seamless")),dir:rnd(col("wind_direction_10m","gfs_seamless"),0)},icon:{spd:rnd(col("wind_speed_10m","icon_seamless")),gst:rnd(col("wind_gusts_10m","icon_seamless")),dir:rnd(col("wind_direction_10m","icon_seamless"),0)}},
-      now:{time:cur.time,spd:cv("wind_speed_10m"),gst:cv("wind_gusts_10m"),dir:cv("wind_direction_10m"),temp:cv("temperature_2m"),code:cv("weather_code")}}; });
+    const m={}; for(const [k,id] of Object.entries(MODEL_IDS)){ if(k!=="bm" && !h[`wind_speed_10m_${id}`]) continue; m[k]={spd:rnd(col("wind_speed_10m",id)),gst:rnd(col("wind_gusts_10m",id)),dir:rnd(col("wind_direction_10m",id),0)}; }   // a model the answer lacks is left out, not stored as nulls
+    docs[s.id]=consensus({spotId:s.id,fetchedAt:now,time:h.time,spd:rnd(col("wind_speed_10m")),gst:rnd(col("wind_gusts_10m")),dir:rnd(col("wind_direction_10m"),0),temp:rnd(col("temperature_2m"),0),pop:rnd(col("precipitation_probability"),0),code:col("weather_code"),vis:rnd(col("visibility"),0), m,
+      now:{time:cur.time,spd:cv("wind_speed_10m"),gst:cv("wind_gusts_10m"),dir:cv("wind_direction_10m"),temp:cv("temperature_2m"),code:cv("weather_code")}}); });
   const wave=all.filter(s=>s.waves);
   try{
     const mq=`latitude=${wave.map(s=>s.lat).join(",")}&longitude=${wave.map(s=>s.lon).join(",")}&hourly=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;

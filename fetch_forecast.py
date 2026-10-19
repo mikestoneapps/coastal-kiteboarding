@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Pull Open-Meteo wind (3 models) + marine forecasts for every spot in spots.json.
+"""Pull Open-Meteo wind (5 models: best match, GFS, ICON, ECMWF IFS, NBM) + marine forecasts for every spot in spots.json.
+Reference only; the page and alerts/lib.mjs score on the per-hour median of best match, ECMWF and NBM (scoring.js consensus()).
 Writes one JSON doc per spot to out/forecast_<id>.json plus out/status.json."""
 import json, os, sys, time, urllib.request, urllib.parse, datetime
 
@@ -29,7 +30,7 @@ for s in spots:
         "latitude": s["lat"], "longitude": s["lon"],
         "hourly": "wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility",
         "current": "wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code",
-        "models": "best_match,gfs_seamless,icon_seamless",
+        "models": "best_match,gfs_seamless,icon_seamless,ecmwf_ifs025,ncep_nbm_conus",
         "wind_speed_unit": "kn", "temperature_unit": "fahrenheit",
         "forecast_days": DAYS, "timezone": "America/Los_Angeles",
     }
@@ -45,10 +46,8 @@ for s in spots:
         "spd": rnd(col("wind_speed_10m")), "gst": rnd(col("wind_gusts_10m")), "dir": rnd(col("wind_direction_10m"), 0),
         "temp": rnd(col("temperature_2m"), 0), "pop": rnd(col("precipitation_probability"), 0),
         "code": col("weather_code"), "vis": rnd(col("visibility"), 0),
-        "m": {
-            "gfs": {"spd": rnd(col("wind_speed_10m", "gfs_seamless")), "gst": rnd(col("wind_gusts_10m", "gfs_seamless")), "dir": rnd(col("wind_direction_10m", "gfs_seamless"), 0)},
-            "icon": {"spd": rnd(col("wind_speed_10m", "icon_seamless")), "gst": rnd(col("wind_gusts_10m", "icon_seamless")), "dir": rnd(col("wind_direction_10m", "icon_seamless"), 0)},
-        },
+        "m": {k: {"spd": rnd(col("wind_speed_10m", m)), "gst": rnd(col("wind_gusts_10m", m)), "dir": rnd(col("wind_direction_10m", m), 0)}
+              for k, m in (("bm", "best_match"), ("ecmwf", "ecmwf_ifs025"), ("nbm", "ncep_nbm_conus"), ("gfs", "gfs_seamless"), ("icon", "icon_seamless"))},
         "now": {"time": cur.get("time"), "spd": curv("wind_speed_10m"), "gst": curv("wind_gusts_10m"),
                 "dir": curv("wind_direction_10m"), "temp": curv("temperature_2m"), "code": curv("weather_code")},
     }

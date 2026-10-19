@@ -42,18 +42,22 @@ async function getJSON(url, tries = 4) {
     catch (e) { if (i >= tries - 1) throw e; await new Promise(res => setTimeout(res, 2000 * (i + 1))); }
   }
 }
+// Open-Meteo model ids -> f.m keys, as in the page. best match, ECMWF and NBM feed the score (hourly median, scoring.consensus); GFS and ICON only vote on confidence.
+export const MODEL_IDS = { bm: "best_match", ecmwf: "ecmwf_ifs025", nbm: "ncep_nbm_conus", gfs: "gfs_seamless", icon: "icon_seamless" };
 export async function fetchForecasts(spots, fetchJSON = getJSON) {
   const lat = spots.map(s => s.lat).join(","), lon = spots.map(s => s.lon).join(",");
-  const q = `latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&models=best_match,gfs_seamless,icon_seamless&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
-  const w = await fetchJSON("https://api.open-meteo.com/v1/forecast?" + q);
+  const query = models => `latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&models=${models}&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  let w;
+  try { w = await fetchJSON("https://api.open-meteo.com/v1/forecast?" + query(Object.values(MODEL_IDS).join(","))); }
+  catch (e) { console.warn("five-model forecast call failed, retrying with three:", e.message); w = await fetchJSON("https://api.open-meteo.com/v1/forecast?" + query("best_match,gfs_seamless,icon_seamless")); }
   const arr = Array.isArray(w) ? w : [w];
   const now = new Date().toISOString().slice(0, 19) + "+00:00";
   const docs = {};
   spots.forEach((s, i) => {
     const d = arr[i]; if (!d || !d.hourly) return; const h = d.hourly;
     const col = (n, m = "best_match") => h[`${n}_${m}`] || h[n] || new Array(h.time.length).fill(null);
-    docs[s.id] = { spotId: s.id, fetchedAt: now, time: h.time, spd: rnd(col("wind_speed_10m")), gst: rnd(col("wind_gusts_10m")), dir: rnd(col("wind_direction_10m"), 0), temp: rnd(col("temperature_2m"), 0), pop: rnd(col("precipitation_probability"), 0), code: col("weather_code"), vis: rnd(col("visibility"), 0),
-      m: { gfs: { spd: rnd(col("wind_speed_10m", "gfs_seamless")) }, icon: { spd: rnd(col("wind_speed_10m", "icon_seamless")) } } };
+    const m = {}; for (const [k, id] of Object.entries(MODEL_IDS)) { if (k !== "bm" && !h[`wind_speed_10m_${id}`]) continue; m[k] = { spd: rnd(col("wind_speed_10m", id)), gst: rnd(col("wind_gusts_10m", id)), dir: rnd(col("wind_direction_10m", id), 0) }; }
+    docs[s.id] = scoring.consensus({ spotId: s.id, fetchedAt: now, time: h.time, spd: rnd(col("wind_speed_10m")), gst: rnd(col("wind_gusts_10m")), dir: rnd(col("wind_direction_10m"), 0), temp: rnd(col("temperature_2m"), 0), pop: rnd(col("precipitation_probability"), 0), code: col("weather_code"), vis: rnd(col("visibility"), 0), m });
   });
   const wave = spots.filter(s => s.waves && docs[s.id]);
   if (wave.length) {

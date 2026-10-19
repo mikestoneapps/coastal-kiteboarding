@@ -2,7 +2,9 @@ name: Station observations
 
 # The hourly job. Two independent parts:
 #   observations — fetch the latest NWS and NDBC readings for every spot into obs.json and commit it so
-#                  the page can read buoys (no CORS) same-origin.
+#                  the page can read buoys (no CORS) same-origin. Then accuracy.py writes one line per spot with a
+#                  fresh reading to accuracy.jsonl: observed knots beside each forecast model's number for that hour
+#                  (90-day window), committed with obs.json. Phase 5 turns it into per-spot, per-model bias.
 #   alerts       — score every spot for every rider who enabled notifications (alerts/run.mjs, scoring.js)
 #                  and send one push digest per rider. Skips itself until the three secrets exist
 #                  (docs/SETUP-SYNC.md, "Push alerts"). Commits nothing.
@@ -34,13 +36,17 @@ jobs:
       - name: Fetch observations
         run: python3 obs_standalone.py obs.json
 
-      - name: Commit obs.json if it changed
+      - name: Log forecast accuracy
+        # Never fails the job (exits 0 on any error) so a forecast outage can't hold up obs.json.
+        run: python3 accuracy.py obs.json accuracy.jsonl
+
+      - name: Commit obs.json and accuracy.jsonl if they changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add obs.json
+          git add obs.json accuracy.jsonl
           if git diff --cached --quiet; then
-            echo "obs.json unchanged"
+            echo "obs.json and accuracy.jsonl unchanged"
             exit 0
           fi
           git commit -m "Update station observations"
