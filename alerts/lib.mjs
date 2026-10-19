@@ -42,7 +42,7 @@ async function getJSON(url, tries = 4) {
     catch (e) { if (i >= tries - 1) throw e; await new Promise(res => setTimeout(res, 2000 * (i + 1))); }
   }
 }
-// Open-Meteo model ids -> f.m keys, as in the page. best match, ECMWF and NBM feed the score (hourly median, scoring.consensus); GFS and ICON only vote on confidence.
+// Open-Meteo model ids -> f.m keys, as in the page. best match, ECMWF and NBM feed the score (hourly median, scoring.consensus; NBM alone at the Gorge spots); GFS and ICON only vote on confidence.
 export const MODEL_IDS = { bm: "best_match", ecmwf: "ecmwf_ifs025", nbm: "ncep_nbm_conus", gfs: "gfs_seamless", icon: "icon_seamless" };
 export async function fetchForecasts(spots, fetchJSON = getJSON) {
   const lat = spots.map(s => s.lat).join(","), lon = spots.map(s => s.lon).join(",");
@@ -57,7 +57,7 @@ export async function fetchForecasts(spots, fetchJSON = getJSON) {
     const d = arr[i]; if (!d || !d.hourly) return; const h = d.hourly;
     const col = (n, m = "best_match") => h[`${n}_${m}`] || h[n] || new Array(h.time.length).fill(null);
     const m = {}; for (const [k, id] of Object.entries(MODEL_IDS)) { if (k !== "bm" && !h[`wind_speed_10m_${id}`]) continue; m[k] = { spd: rnd(col("wind_speed_10m", id)), gst: rnd(col("wind_gusts_10m", id)), dir: rnd(col("wind_direction_10m", id), 0) }; }
-    docs[s.id] = scoring.consensus({ spotId: s.id, fetchedAt: now, time: h.time, spd: rnd(col("wind_speed_10m")), gst: rnd(col("wind_gusts_10m")), dir: rnd(col("wind_direction_10m"), 0), temp: rnd(col("temperature_2m"), 0), pop: rnd(col("precipitation_probability"), 0), code: col("weather_code"), vis: rnd(col("visibility"), 0), m });
+    docs[s.id] = scoring.consensus({ spotId: s.id, fetchedAt: now, time: h.time, spd: rnd(col("wind_speed_10m")), gst: rnd(col("wind_gusts_10m")), dir: rnd(col("wind_direction_10m"), 0), temp: rnd(col("temperature_2m"), 0), pop: rnd(col("precipitation_probability"), 0), code: col("weather_code"), vis: rnd(col("visibility"), 0), m }, s.model);   // a Gorge spot scores on NBM (spots.json `model`), the rest on the median
   });
   const wave = spots.filter(s => s.waves && docs[s.id]);
   if (wave.length) {

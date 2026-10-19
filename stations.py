@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Resolve nearest public wind stations per spot (once, cached to stations.json) and fetch latest observations
 into out/obs.json: {spotId: [{id,name,kind,dist_mi,time,spd,gst,dir,wvht,age_min}, ...]}.
-Sources: NWS/METAR via api.weather.gov (nearest 2 land stations), NOAA NDBC realtime2 (hand-mapped buoys)."""
+Sources: NWS/METAR via api.weather.gov (nearest 2 land stations), NOAA NDBC realtime2 (hand-mapped buoys).
+Search radius: NWS_RADIUS_MI miles for land stations, NDBC_RADIUS_MI for buoys, or the spot's own `stationRadiusMi`
+(spots.json; Florence has 35 because nothing reports within 25 mi of the south jetty) when that is larger.
+`python3 stations.py --resolve florence [id ...]` re-resolves just those spots into stations.json; after that, copy the
+new rows into STATIONS in obs_standalone.py and NWS_STATIONS in index.html (both embed the file so the page and the
+hourly job need no extra fetch)."""
 import json, os, sys, time, math, urllib.request, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -30,10 +35,18 @@ def mi(a, b, c, d):
     x = math.sin((c - a) * r / 2) ** 2 + math.cos(a * r) * math.cos(c * r) * math.sin((d - b) * r / 2) ** 2
     return 2 * R * math.asin(math.sqrt(x))
 
-def resolve():
-    if os.path.exists(CACHE): return json.load(open(CACHE))
-    out = {}
+NWS_RADIUS_MI, NDBC_RADIUS_MI = 25, 45
+def radii(s):
+    r = s.get("stationRadiusMi")
+    return (max(NWS_RADIUS_MI, r), max(NDBC_RADIUS_MI, r)) if r else (NWS_RADIUS_MI, NDBC_RADIUS_MI)
+
+def resolve(only=None):
+    cached = json.load(open(CACHE)) if os.path.exists(CACHE) else None
+    if cached is not None and not only: return cached
+    out = dict(cached or {})
     for s in spots:
+        if only and s["id"] not in only: continue
+        nws_mi, ndbc_mi = radii(s)
         lst = []
         try:
             pts = json.loads(get(f"https://api.weather.gov/points/{s['lat']},{s['lon']}"))
@@ -41,13 +54,13 @@ def resolve():
             for f in st["features"][:6]:
                 lon, lat = f["geometry"]["coordinates"]
                 d = mi(s["lat"], s["lon"], lat, lon)
-                if d <= 25: lst.append({"id": f["properties"]["stationIdentifier"], "name": f["properties"]["name"], "kind": "nws", "lat": lat, "lon": lon, "dist_mi": round(d, 1)})
+                if d <= nws_mi: lst.append({"id": f["properties"]["stationIdentifier"], "name": f["properties"]["name"], "kind": "nws", "lat": lat, "lon": lon, "dist_mi": round(d, 1)})
             lst = sorted(lst, key=lambda x: x["dist_mi"])[:2]
         except Exception as e:
             print("nws resolve failed", s["id"], e, file=sys.stderr)
         for bid, (la, lo) in NDBC_LL.items():
             d = mi(s["lat"], s["lon"], la, lo)
-            if d <= 45: lst.append({"id": bid, "name": NDBC[bid], "kind": "ndbc", "lat": la, "lon": lo, "dist_mi": round(d, 1)})
+            if d <= ndbc_mi: lst.append({"id": bid, "name": NDBC[bid], "kind": "ndbc", "lat": la, "lon": lo, "dist_mi": round(d, 1)})
         out[s["id"]] = sorted(lst, key=lambda x: x["dist_mi"])[:3]
         print(s["id"], [(x["id"], x["dist_mi"]) for x in out[s["id"]]])
         time.sleep(0.6)
@@ -100,6 +113,10 @@ def fetch_obs(stations):
     return out
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--resolve":
+        st = resolve(only=set(sys.argv[2:]))
+        for k in sys.argv[2:]: print(k, json.dumps(st.get(k, [])))
+        sys.exit(0)
     st = resolve()
     obs = fetch_obs(st)
     for k, v in obs.items():

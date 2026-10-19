@@ -1,6 +1,7 @@
 // scoring.js — Gorge or Coast scoring model, extracted from the prototype (Oct 2026).
 // Pure functions, no DOM. See SPEC.md §3.
-// Docs from fetchForecasts() go through consensus() first: spd/gst are the per-hour median of best match, ECMWF and NBM.
+// Docs from fetchForecasts() go through consensus(doc, spot.model) first: spd/gst are the per-hour median of best match, ECMWF and NBM,
+// or NBM itself where the spot says so (the Gorge: gap wind that the 9–13 km global models cannot see).
 // Usage: const r = dayScore(spot, forecastDoc, "2026-10-17", "freeride", {speed:1,dir:1,gust:1,wave:1,wx:1}, limits);
 //   limits = the rider's comfort profile merged with the spot override: limitsFor(settings, spot.id).
 //   Omit it for the default comfort profile. Identical to the scoring in index.html; alerts/test.mjs checks that.
@@ -16,13 +17,16 @@ const KG=0.4536;
    GFS and ICON only vote on confidence. Single models disagree by 5–10 kn at the Gorge and coast spots (SPEC §3). */
 const MODELS=[["bm","Best match"],["ecmwf","ECMWF"],["nbm","NBM"],["gfs","GFS"],["icon","ICON"]];
 function median(xs){ const a=xs.filter(x=>x!=null).sort((x,y)=>x-y); if(!a.length) return null; const m=a.length>>1; return a.length%2? a[m] : (a[m-1]+a[m])/2; }
-function consensus(f){
+function consensus(f, model){
   // f.spd / f.gst := per-hour median of f.m.bm, f.m.ecmwf, f.m.nbm (whichever have a value that hour); direction stays best match's.
+  // model "nbm" (spots.json `model`, the three Gorge spots): that hour's NBM value instead, the median where NBM has none (SPEC §3).
   // With fewer than two of those in the doc (an older cache, a point outside their domains) the doc comes back unchanged.
+  // f.basis says which series the doc now carries: "nbm" or "median" (absent on an unchanged doc: best match alone).
   const M=f.m||{}; const src=["bm","ecmwf","nbm"].map(k=>M[k]).filter(x=>x&&x.spd);
   if(src.length<2) return f;
-  const med=(key,i)=>{ const v=median(src.map(x=>x[key]&&x[key][i])); return v==null? f[key][i] : Math.round(v*10)/10; };
-  return {...f, spd:f.spd.map((_,i)=>med("spd",i)), gst:f.gst.map((_,i)=>med("gst",i))};
+  const pick= model==="nbm" && M.nbm && M.nbm.spd? M.nbm : null;
+  const med=(key,i)=>{ const p=pick&&pick[key]? pick[key][i] : null; const v= p!=null? p : median(src.map(x=>x[key]&&x[key][i])); return v==null? f[key][i] : Math.round(v*10)/10; };
+  return {...f, basis: pick?"nbm":"median", spd:f.spd.map((_,i)=>med("spd",i)), gst:f.gst.map((_,i)=>med("gst",i))};
 }
 function modelSpread(f, wi, spd){
   // Best-window mean per model, over every model the doc carries (up to five). Older docs have no f.m.bm: their spd is best match itself.
@@ -31,7 +35,19 @@ function modelSpread(f, wi, spd){
   if(!mm.some(x=>x.k==="bm") && mm.length && spd!=null) mm.unshift({k:"bm",label:"Best match",v:spd});
   if(mm.length<2) return null;
   const lo=mm.reduce((a,b)=>b.v<a.v?b:a), hi=mm.reduce((a,b)=>b.v>a.v?b:a), d=hi.v-lo.v;
-  return {lo:lo.v, hi:hi.v, loLabel:lo.label, hiLabel:hi.label, n:mm.length, agree: d<=4?"Models agree": d<=8?"Models mixed":"Models disagree"};
+  return {lo:lo.v, hi:hi.v, loLabel:lo.label, hiLabel:hi.label, loKey:lo.k, hiKey:hi.k, n:mm.length, agree: d<=4?"Models agree": d<=8?"Models mixed":"Models disagree"};
+}
+function modelSwing(spot, f, wi, models, style, L){
+  // Score the best window on the lowest model alone and on the highest alone; the difference is how far the spread could move
+  // the score. The tile shows the confidence chip only when that is 2 or more (it crosses a score band); the detail always shows it.
+  if(!models) return null;
+  const series=k=>{ const M=f.m&&f.m[k]; if(M&&M.spd) return M; return k==="bm"? {spd:f.spd,gst:f.gst} : null; };   // an older doc: spd is best match itself
+  const run=k=>{ const M=series(k); if(!M) return null;
+    const g={...f, spd:[...f.spd], gst:[...f.gst]};
+    for(const i of wi){ const s=M.spd[i]; if(s==null) continue; g.spd[i]=s; g.gst[i]= M.gst&&M.gst[i]!=null? M.gst[i] : (f.spd[i]&&f.gst[i]!=null? Math.round(f.gst[i]*s/f.spd[i]*10)/10 : f.gst[i]); }   // no gust series: keep the gust ratio
+    return wi.reduce((a,i)=>a+hourScore(spot,g,i,style,L).v,0)/wi.length; };
+  const lo=run(models.loKey), hi=run(models.hiKey);
+  return lo==null||hi==null? null : Math.round(Math.abs(hi-lo)*10)/10;
 }
 function inSectors(d, secs){ return secs.some(([a,b])=> a<=b ? (d>=a && d<=b) : (d>=a || d<=b)); }
 function dirScore(d, dir){
@@ -105,7 +121,8 @@ function dayScore(spot, f, day, style, weights, limits){
   const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
   const nz=a=>a.filter(x=>x!=null);
   const spd=avg(nz(wi.map(i=>f.spd[i]))), gst=avg(nz(wi.map(i=>f.gst[i]))), dir=f.dir[wi[Math.floor(wi.length/2)]];
-  const models=modelSpread(f, wi, spd), agree=models? models.agree:null;   // all five models vote; the score itself ran on the median (consensus())
+  const models=modelSpread(f, wi, spd), agree=models? models.agree:null;   // all five models vote; the score itself ran on the median, or NBM at a Gorge spot (consensus())
+  if(models) models.swing=modelSwing(spot, f, wi, models, style, L);
   const wh=f.wh? avg(nz(wi.map(i=>m2ft(f.wh[i])))):null, wp=f.wp? avg(nz(wi.map(i=>f.wp[i]))):null;
   const temp=avg(nz(wi.map(i=>f.temp[i])));
   const gates=win.map(w=>w.gate).filter(Boolean), whys=win.map(w=>w.why).filter(Boolean);
@@ -122,4 +139,4 @@ function mins(m){ return m<60? m+" min" : Math.floor(m/60)+"h"+String(m%60).padS
 function cls(s,gate){ return gate?"gate": s>=7?"good": s>=4?"ok":"poor"; }
 function kiteFor(spd){ const kg=settings.weightLb*KG; const ideal=kg*2.175/Math.max(spd,6); const ks=settings.kites.length?settings.kites:[7,9,12,14]; return ks.reduce((a,k)=>Math.abs(k-ideal)<Math.abs(a-ideal)?k:a, ks[0]); }
 
-if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,DEFAULT_COMFORT,MODELS,limitsFor,settings,median,consensus,modelSpread,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};
+if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,DEFAULT_COMFORT,MODELS,limitsFor,settings,median,consensus,modelSpread,modelSwing,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};
