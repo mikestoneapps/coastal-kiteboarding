@@ -4,7 +4,7 @@ import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { scoring, SPOTS, evaluate, DEFAULT_ALERTS, inQuiet, laNow } from "./lib.mjs";
+import { scoring, SPOTS, evaluate, DEFAULT_ALERTS, inQuiet, laNow, fetchForecasts, MODEL_IDS } from "./lib.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let fails = 0;
 const assert = (c, m) => { if (!c) { fails++; console.error("FAIL:", m); } else console.log("ok  ", m); };
@@ -14,12 +14,16 @@ const near = (a, b) => (a == null && b == null) || Math.abs(a - b) < 1e-9;
 const DAYSK = ["2026-10-17", "2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21"];   // Sat..Wed
 function doc(fn) {
   const time = []; DAYSK.forEach(d => { for (let h = 0; h < 24; h++) time.push(`${d}T${String(h).padStart(2, "0")}:00`); });
-  const f = { time, spd: [], gst: [], dir: [], temp: [], pop: [], code: [], vis: [], wh: [], wp: [], m: { gfs: { spd: [] }, icon: { spd: [] } } };
-  time.forEach((t, i) => { const v = fn(t.slice(0, 10), +t.slice(11, 13), i); f.spd.push(v.spd); f.gst.push(v.gst ?? v.spd * 1.2); f.dir.push(v.dir ?? 290); f.temp.push(60); f.pop.push(v.pop ?? 0); f.code.push(v.code ?? 1); f.vis.push(20000); f.wh.push(v.wh ?? 1); f.wp.push(10); f.m.gfs.spd.push(v.gfs ?? v.spd); f.m.icon.spd.push(v.icon ?? v.spd); });
+  const f = { time, spd: [], gst: [], dir: [], temp: [], pop: [], code: [], vis: [], wh: [], wp: [], m: { bm: { spd: [], gst: [] }, ecmwf: { spd: [], gst: [] }, nbm: { spd: [], gst: [] }, gfs: { spd: [] }, icon: { spd: [] } } };
+  time.forEach((t, i) => { const v = fn(t.slice(0, 10), +t.slice(11, 13), i); const g = v.gst ?? v.spd * 1.2; f.spd.push(v.spd); f.gst.push(g); f.dir.push(v.dir ?? 290); f.temp.push(60); f.pop.push(v.pop ?? 0); f.code.push(v.code ?? 1); f.vis.push(20000); f.wh.push(v.wh ?? 1); f.wp.push(10);
+    const or = (x, d) => x === undefined ? d : x;   // null means "this model has no value this hour"
+    f.m.bm.spd.push(or(v.bm, v.spd)); f.m.bm.gst.push(or(v.bmg, g)); f.m.ecmwf.spd.push(or(v.ecmwf, v.spd)); f.m.ecmwf.gst.push(or(v.ecmwfg, g)); f.m.nbm.spd.push(or(v.nbm, v.spd)); f.m.nbm.gst.push(or(v.nbmg, g)); f.m.gfs.spd.push(v.gfs ?? v.spd); f.m.icon.spd.push(v.icon ?? v.spd); });
   return f;
 }
 const great = () => ({ spd: 20 });                                  // 20g24 W all week
-const varied = (d, h) => ({ spd: 8 + ((h * 7 + d.charCodeAt(9) * 3) % 30), gst: 10 + ((h * 11) % 35), dir: (h * 37) % 360, wh: ((h * 13) % 12) / 1.5, pop: (h * 9) % 100, code: h % 5 === 0 ? 45 : 1, gfs: 10 + (h % 9), icon: 14 + (h % 11) });
+const varied = (d, h) => ({ spd: 8 + ((h * 7 + d.charCodeAt(9) * 3) % 30), gst: 10 + ((h * 11) % 35), dir: (h * 37) % 360, wh: ((h * 13) % 12) / 1.5, pop: (h * 9) % 100, code: h % 5 === 0 ? 45 : 1, gfs: 10 + (h % 9), icon: 14 + (h % 11), ecmwf: 6 + (h % 13), nbm: 12 + (h % 7) });
+// raw per-model doc (what fetchForecasts builds before consensus): spd is best match, the three score models disagree
+const rawDoc = () => doc((d, h) => ({ spd: 12 + (h % 5), gst: 16 + (h % 5), ecmwf: 20 - (h % 4), nbm: h % 6 === 0 ? null : 15 + (h % 3), ecmwfg: 25 - (h % 4), nbmg: h % 6 === 0 ? null : 19 + (h % 3), gfs: 9, icon: 22 }));
 
 /* ---------- 1. parity with the page ---------- */
 {
@@ -31,21 +35,51 @@ const varied = (d, h) => ({ spd: 8 + ((h * 7 + d.charCodeAt(9) * 3) % 30), gst: 
   const overrides = { manzanita: { maxWind: 34, minHours: 2 }, rufus: { maxGust: 20 } };
   const weights = { speed: 1.5, dir: 1, gust: 0.5, wave: 2, wx: 1 };
   const sandbox = { STYLES: scoring.STYLES, DAY_START: 7, DAY_END: 19, NUKE: 35, obsData: {}, Date, Math, Object, Array, Number, String, Set, JSON, console,
-    settings: { weights, comfort, overrides }, compass: d => "W", mode: null, m2ft: null };
+    settings: { weights, comfort, overrides }, compass: d => "W", mode: null, m2ft: null, wn: v => Math.round(v) + " kn", wnum: v => String(Math.round(v)), wrange: (a, b) => `${a}–${b} kn` };   // the page's unit formatters live outside the block
   sandbox.limitsFor = id => ({ ...comfort, ...(overrides[id] || {}) });
   vm.createContext(sandbox);
-  vm.runInContext(block + "\nthis.pageDayScore=dayScore;", sandbox);
+  vm.runInContext(block + "\nthis.pageDayScore=dayScore; this.pageConsensus=consensus; this.pageModelSpread=modelSpread;", sandbox);
   let n = 0, same = 0;
-  for (const spot of SPOTS) for (const style of ["freeride", "wave", "foil"]) for (const f of [doc(great), doc(varied)]) for (const d of DAYSK) {
+  const sameModels = (a, b) => (a == null && b == null) || (a && b && near(a.lo, b.lo) && near(a.hi, b.hi) && a.loLabel === b.loLabel && a.hiLabel === b.hiLabel && a.n === b.n);
+  for (const spot of SPOTS) for (const style of ["freeride", "wave", "foil"]) for (const f of [doc(great), doc(varied), scoring.consensus(rawDoc())]) for (const d of DAYSK) {
     const p = sandbox.pageDayScore(spot, f, d, style);
     const s = scoring.dayScore(spot, f, d, style, weights, scoring.limitsFor({ comfort, overrides }, spot.id));
     n++;
-    const ok = p && s && near(p.score, s.score) && p.from === s.from && p.to === s.to && p.reason === s.reason && p.agree === s.agree && p.window === s.window && !!p.mine === !!s.mine;
+    const ok = p && s && near(p.score, s.score) && p.from === s.from && p.to === s.to && p.reason === s.reason && p.agree === s.agree && sameModels(p.models, s.models) && p.window === s.window && !!p.mine === !!s.mine;
     if (ok) same++; else if (same === n - 1) console.error("first mismatch:", spot.id, style, d, p && { score: p.score, from: p.from, reason: p.reason }, s && { score: s.score, from: s.from, reason: s.reason });
   }
   assert(same === n && n > 0, `scoring.js matches the page on ${n} spot/style/day cases (limits, overrides, weights, minHours)`);
   const s0 = scoring.dayScore(SPOTS[0], doc(great), DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS);
   assert(s0 && s0.score > 0 && s0.window === 3, "dayScore without limits still works (default comfort, 3-hour window)");
+
+  // the median the score runs on: best match / ECMWF / NBM per hour, GFS and ICON never blended in
+  const raw = rawDoc(), c = scoring.consensus(raw), pc = sandbox.pageConsensus(raw);
+  assert(JSON.stringify(c.spd) === JSON.stringify(pc.spd) && JSON.stringify(c.gst) === JSON.stringify(pc.gst), "consensus(): page and scoring.js build the same median series");
+  const i1 = 1, i0 = 0;   // hour 1: bm 13, ecmwf 19, nbm 16 -> 16; hour 0: nbm null -> mean of bm 12 and ecmwf 20 = 16
+  assert(c.spd[i1] === 16 && c.gst[i1] === 20 && c.spd[i0] === 16 && c.dir[i0] === raw.dir[i0] && raw.spd[i1] === 13, "median of the three per hour (gusts too); a model missing for an hour drops out; direction stays best match's");
+  assert(!c.spd.some(v => v === 9 || v === 22) && c.m.bm.spd[i1] === 13, "GFS (9) and ICON (22) never enter the median; the raw per-model series stay on the doc");
+  const legacy = { ...raw, m: { gfs: raw.m.gfs, icon: raw.m.icon } };
+  assert(scoring.consensus(legacy) === legacy && scoring.consensus({ ...raw, m: { bm: raw.m.bm } }).spd === raw.spd, "an older cached doc (no ECMWF/NBM) is left as best match");
+  assert(scoring.median([3, null, 1, 2]) === 2 && scoring.median([4, 1]) === 2.5 && scoring.median([null]) === null, "median(): odd, even, empty");
+  // confidence over all five; the spread names the extremes
+  const r5 = scoring.dayScore(SPOTS[0], c, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS);
+  assert(r5.models && r5.models.n === 5 && r5.models.hiLabel === "ICON" && r5.models.loLabel === "GFS" && near(r5.models.hi, 22) && near(r5.models.lo, 9) && r5.agree === "Models disagree", `five models vote: ${JSON.stringify(r5.models)}`);
+  const rl = scoring.dayScore(SPOTS[0], legacy, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS);
+  assert(rl.models && rl.models.n === 3 && rl.agree === "Models disagree", "legacy doc: best match + GFS + ICON vote, as before");
+  const rOne = scoring.dayScore(SPOTS[0], { ...raw, m: {} }, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS);
+  assert(rOne.agree === null && rOne.models === null, "a single model: no confidence chip");
+  // fetchForecasts: one five-model call, consensus applied, three-model fallback if the API rejects a model id
+  {
+    const calls = [];
+    const api = n => Array.from({ length: n }, (_, k) => { const time = DAYSK.flatMap(d => Array.from({ length: 24 }, (_, h) => `${d}T${String(h).padStart(2, "0")}:00`)); const H = { time }; const put = (id, v) => { H["wind_speed_10m_" + id] = time.map(() => v); H["wind_gusts_10m_" + id] = time.map(() => v + 4); H["wind_direction_10m_" + id] = time.map(() => 280); }; put("best_match", 10 + k); put("ecmwf_ifs025", 20); put("ncep_nbm_conus", 14); put("gfs_seamless", 30); put("icon_seamless", 5); for (const x of ["temperature_2m", "precipitation_probability", "weather_code", "visibility"]) H[x + "_best_match"] = time.map(() => 1); return { hourly: H }; });
+    const F = await fetchForecasts(SPOTS.slice(0, 2), async url => { calls.push(url); if (/marine/.test(url)) throw new Error("no marine in this test"); return api(2); });
+    const u = new URL(calls[0]);
+    assert(calls.filter(c => /api\.open-meteo/.test(c)).length === 1 && u.searchParams.get("models") === Object.values(MODEL_IDS).join(",") && u.searchParams.get("wind_speed_unit") === "kn", "one forecast call with the five models, in knots");
+    assert(F[SPOTS[0].id].spd[12] === 14 && F[SPOTS[1].id].spd[12] === 14 && F[SPOTS[0].id].m.bm.spd[12] === 10 && F[SPOTS[0].id].m.nbm.gst[12] === 18 && Object.keys(F[SPOTS[0].id].m).join() === "bm,ecmwf,nbm,gfs,icon", "job docs: spd is the median (bm 10 / ecmwf 20 / nbm 14 -> 14), every model kept under f.m");
+    let n2 = 0;
+    const F3 = await fetchForecasts(SPOTS.slice(0, 1), async url => { if (/marine/.test(url)) throw new Error("x"); n2++; if (n2 === 1) throw new Error("HTTP 400"); const a = api(1); for (const k of Object.keys(a[0].hourly)) if (/ecmwf|nbm/.test(k)) delete a[0].hourly[k]; return a; });
+    assert(n2 === 2 && F3[SPOTS[0].id].spd[12] === 10 && Object.keys(F3[SPOTS[0].id].m).join() === "bm,gfs,icon", "a rejected five-model call falls back to three; the doc is then best match alone, with no empty model slots");
+  }
 }
 
 /* ---------- 2. decision rules ---------- */

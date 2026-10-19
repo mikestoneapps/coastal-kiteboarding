@@ -100,7 +100,7 @@ export function openMeteo(n, fn = () => ({}), days = 5, start = new Date()) {
   const loc = (i) => {
     const hourly = { time }; const cols = { wind_speed_10m: [], wind_gusts_10m: [], wind_direction_10m: [], temperature_2m: [], precipitation_probability: [], weather_code: [], visibility: [] };
     time.forEach((t, k) => { const v = { spd: 18, gst: 22, dir: 270, temp: 66, pop: 5, code: 1, vis: 24000, ...fn(i, +t.slice(11, 13), t.slice(0, 10), k) }; cols.wind_speed_10m.push(v.spd); cols.wind_gusts_10m.push(v.gst); cols.wind_direction_10m.push(v.dir); cols.temperature_2m.push(v.temp); cols.precipitation_probability.push(v.pop); cols.weather_code.push(v.code); cols.visibility.push(v.vis); });
-    for (const [k, a] of Object.entries(cols)) { hourly[k + "_best_match"] = a; hourly[k + "_gfs_seamless"] = a.map(x => x == null ? null : x); hourly[k + "_icon_seamless"] = a.map(x => x == null ? null : x); }
+    for (const [k, a] of Object.entries(cols)) for (const m of ["best_match", "gfs_seamless", "icon_seamless", "ecmwf_ifs025", "ncep_nbm_conus"]) hourly[k + "_" + m] = m === "best_match" ? a : a.map(x => x == null ? null : x);
     return { latitude: 0, longitude: 0, hourly, current: { time: time[12], wind_speed_10m_best_match: 15, wind_gusts_10m_best_match: 19, wind_direction_10m_best_match: 270, temperature_2m_best_match: 64, weather_code_best_match: 1 } };
   };
   return Array.from({ length: n }, (_, i) => loc(i));

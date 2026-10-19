@@ -19,10 +19,11 @@ A kiteboarding spot-finder for one rider in Portland, OR (gift for his 50th). Th
 - `img/` — spot photos (480×320 JPEG, CC-licensed; credits in `img/credits.json`). Missing photo ⇒ neutral tile, by design.
 - `manifest.webmanifest`, `icon-*.png` — home-screen install.
 - `spots.json` — the 15 curated spots (schema in SPEC.md §4). `index.html` currently embeds a copy as `const SPOTS`; keep them in sync, or make the page load the JSON (preferred once there is a build step).
-- `scoring.js` — the scoring model as a standalone module, identical logic to the page (including comfort limits and per-spot overrides). If you change scoring, change both; `node alerts/test.mjs` fails if they differ.
+- `scoring.js` — the scoring model as a standalone module, identical logic to the page (including comfort limits, per-spot overrides and `consensus()`, the hourly median of best match / ECMWF / NBM that the score runs on). If you change scoring, change both; `node alerts/test.mjs` fails if they differ.
 - `stations.json` — nearest public wind stations per spot (NWS ids and NDBC buoy ids with distances).
 - `stations.py`, `obs_standalone.py` — fetch station observations (NWS via api.weather.gov; NDBC via realtime2 text feed). NDBC has no CORS, so buoys must be fetched server-side.
-- `fetch_forecast.py` — reference Open-Meteo fetch (3 models + marine).
+- `fetch_forecast.py` — reference Open-Meteo fetch (5 models + marine).
+- `accuracy.py`, `accuracy.jsonl` — the forecast-accuracy log: the hourly observations job appends one line per spot with a fresh station reading (observed knots beside each model's forecast for that hour), 90-day window, committed with `obs.json`. `python3 test_accuracy.py` tests it offline. Phase 5 turns it into per-spot, per-model bias.
 - `checklist-defaults.json` — default checklist items.
 - `sync/` — settings-sync + push Cloudflare Worker (`worker.js`, `wrangler.toml`, `test.mjs`). Optional; the page runs on localStorage alone until a Worker URL is entered in the Rider sheet. Also stores push subscriptions and the per-rider "already alerted" state. Setup in `docs/SETUP-SYNC.md`.
 - `alerts/` — hourly push-alert job (`run.mjs` sends, `lib.mjs` decides, `test.mjs` checks the rules and that the page's inline scoring still matches `scoring.js`). Runs in `.github/workflows/observations.yml`; skips itself until the secrets exist.
@@ -34,7 +35,7 @@ A kiteboarding spot-finder for one rider in Portland, OR (gift for his 50th). Th
 ## Conventions
 - Plain HTML/CSS/JS for the page; no framework unless a phase needs one and the plan says so. Any build step must still produce a static `index.html` that GitHub Pages serves.
 - Python 3 for jobs (GitHub Actions). Keep jobs idempotent; commit generated data files (`obs.json`, `forecast.json`) to the repo so the page can read them same-origin.
-- Units: knots for wind, feet for surf, °F for air, miles for distance, America/Los_Angeles for time.
+- Units: knots for wind, feet for surf, °F for air, miles for distance, America/Los_Angeles for time. Knots are the only wind unit stored, synced, scored or logged; the page converts to mph for display only when `settings.units` is `"mph"` (the `wn`/`wg`/`wrange` helpers), and every wind figure shown carries its unit.
 - Spot ids are lowercase slugs; never rename an existing id (localStorage overrides key on it).
 - Commit messages: imperative, one line of what and why. Small PRs, one phase step each.
 
