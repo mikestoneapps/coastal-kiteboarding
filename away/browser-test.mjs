@@ -49,7 +49,7 @@ function mock(page, opts = {}) {
       if (method === "DELETE") { delete S.photos[m[1]]; return json({ ok: true }); }
       return json({ error: "method not allowed" }, 405);
     }
-    if (/\/obs\.json/.test(u)) return json({ obs: {} });   // station readings arrive at their own pace; keep the comparison deterministic
+    if (/\/obs\.json/.test(u)) return json(opts.obs || { obs: {} });   // station readings arrive at their own pace; keep the comparison deterministic (opts.obs: a fixed set)
     if (/\/away-spots\.json/.test(u) && !REAL_FILE) {
       log.push("away-spots.json");
       const f = opts.file || "ok";
@@ -316,6 +316,81 @@ try {
     assert(/Models\n18 kn\nall 3 within a knot/i.test(fdet) && /Models agree/.test(fdet), "three identical models: 'all 3 within a knot', Models agree");
     assert(fb.errors.length === 0, "fallback: no page errors (" + fb.errors.join(" | ") + ")");
     await fb.ctx.close();
+  }
+
+  /* ---------- 1d. the selected day: detail rows, sort labels, hero format, station scoring only today ---------- */
+  {
+    // Day keys as the page builds them (LA calendar days from today); names computed here, not read back from the page.
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    const key = d => new Date(Date.parse(today + "T12:00:00Z") + d * 864e5).toISOString().slice(0, 10);
+    const short = d => new Date(key(d) + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+    const long = d => new Date(key(d) + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+    const dayOf = day => Math.round((Date.parse(day + "T12:00:00Z") - Date.parse(today + "T12:00:00Z")) / 864e5);
+    // Within 1h30 of Lake Oswego only Stevenson (point 0) and Hood River (point 1) qualify. Today Stevenson blows (20g24, the freeride peak), Hood River is light (12);
+    // tomorrow the reverse; the day after Stevenson again; the last two days both 18. W all week.
+    const byDay = n => F.openMeteo(n, (i, h, day) => { const d = dayOf(day); const s = i === 0 ? [20, 12, 20, 18, 18][d] : i === 1 ? [12, 20, 12, 18, 18][d] : 18; return { spd: s, gst: s + 4, dir: 270 }; });
+    // A fresh, trusted station 1.8 mi from Stevenson reading 5 kn against the 20 kn forecast: a disagreement, today only.
+    const obs = { fetchedAt: new Date().toISOString(), obs: { stevenson: [{ id: "TEST1", name: "Test station", kind: "nws", dist_mi: 1.8, time: new Date(Date.now() - 10 * 60000).toISOString(), spd: 5, gst: 7, dir: 270 }] } };
+    const { page, errors, ctx } = await newPage(browser, url, { forecast: byDay, obs });
+    await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(800);
+    const sortBtn = k => page.locator(`[data-sort="${k}"]`);
+    const detailOf = async () => text(page, "#" + (await page.getAttribute(".row", "id")).replace("row-", "detail-"));
+    const openFirst = async () => { if ((await page.getAttribute(".row .head", "aria-expanded")) !== "true") { await page.click(".row .head"); await page.waitForTimeout(200); } };
+
+    // today
+    assert((await text(page, '#days button[aria-pressed="true"]')).startsWith("Today"), "today is selected on load");
+    assert((await sortBtn("score").innerText()) === short(0) && (await sortBtn("tomorrow").innerText()) === short(1) && (await sortBtn("tomorrow").isVisible()) && (await sortBtn("distance").innerText()) === "Distance", `sort buttons read ${short(0)} / ${short(1)} / Distance with today selected`);
+    assert((await sortBtn("score").getAttribute("aria-pressed")) === "true", "the day sort is pressed by default");
+    const hero0 = await text(page, "#hero");
+    assert(new RegExp(`^\\d+\\.\\d\nBest bet · ${short(0)} · within 1h30\nStevenson\n`, "i").test(hero0), "hero: score, then 'BEST BET · " + short(0).toUpperCase() + " · WITHIN 1H30', then Stevenson on top today: " + hero0.split("\n").slice(0, 3).join(" | "));
+    assert((await page.getAttribute(".row", "id")) === "row-stevenson" && /Station reads 5 kn/.test(await first(page, ".row .wind")), "today's list: Stevenson first, with the 'Station reads 5 kn' chip (station 5 kn vs the 20 kn forecast hour): " + JSON.stringify(await first(page, ".row .wind")));
+    await openFirst(); let det = await detailOf();
+    assert(new RegExp(`^${long(0)}, hour by hour\n`, "i").test(det), `the chart is titled '${long(0)}, hour by hour': ` + det.split("\n")[0]);
+    assert(/Wind measured now\n5 kn gusting 7 from the W/i.test(det) && /Wind forecast · next hour/i.test(det) && /Wind forecast · in 3 hours/i.test(det) && /Wind forecast · in 5 hours/i.test(det), "today's detail keeps 'Wind measured now' and the next-hour / 3-hour / 5-hour rows");
+    assert(!/morning ·|midday ·|afternoon ·|Lead time/i.test(det), "and has no morning / midday / afternoon rows or lead-time line");
+    assert(/Station disagrees:/.test(det) && /Today's score uses the station/.test(det) && /the best 3-hour stretch today;/.test(det), "'Station disagrees' is shown and says today's score uses the station");
+
+    // tomorrow
+    await page.click("#days button >> nth=1"); await page.waitForTimeout(300);
+    assert((await sortBtn("score").innerText()) === short(1) && (await sortBtn("tomorrow").innerText()) === short(2) && (await sortBtn("tomorrow").isVisible()), `tomorrow selected: sort buttons read ${short(1)} / ${short(2)}`);
+    const hero1 = await text(page, "#hero");
+    assert(new RegExp(`^\\d+\\.\\d\nBest bet · ${short(1)} · within 1h30\nHood River`, "i").test(hero1), "hero keeps the one format and names tomorrow's best (Hood River): " + hero1.split("\n").slice(0, 3).join(" | "));
+    assert((await page.getAttribute(".row", "id")) === "row-hoodriver" && !/Station reads/.test(await text(page, "#list")), "tomorrow's list: Hood River first; no 'Station reads' chip on any row");
+    await openFirst(); det = await detailOf();
+    assert(new RegExp(`^${long(1)}, hour by hour\n`, "i").test(det), `chart titled '${long(1)}, hour by hour'`);
+    assert(!/Wind measured|next hour|in 3 hours|in 5 hours|Station disagrees/i.test(det), "tomorrow's detail has no station row, no next-hour rows, no 'Station disagrees'");
+    const block = new RegExp(`${short(1)} morning · 7a–10a\n20 kn gusting 24 from the W ?\n3-model median, ${long(1)} 7a–10a average\n${short(1)} midday · 11a–2p\n20 kn gusting 24 from the W ?\n[^\n]*\n${short(1)} afternoon · 3p–6p\n20 kn gusting 24 from the W`, "i");
+    assert(block.test(det), `morning / midday / afternoon rows for ${long(1)} (median model, gusts, direction): ` + (det.match(new RegExp(`${short(1)} morning[^]*?average`, "i")) || [""])[0].replace(/\n/g, " | "));
+    assert(/Lead time\nTomorrow: hour-by-hour timing is usually good\./i.test(det), "lead-time line for tomorrow");
+    assert(new RegExp(`the best 3-hour stretch ${long(1)};`).test(det), "the best-window row names the day");
+    assert(/Models agree/.test(await first(page, ".row .wind")), "the model-agreement chip shows on a planning day");
+    // the second sort button: the day after the selected one
+    await sortBtn("tomorrow").click(); await page.waitForTimeout(300);
+    { const id = await page.getAttribute(".row", "id"), w = await first(page, ".row .wind"), sk = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).sort);
+      assert(id === "row-stevenson" && new RegExp(`${short(2)} \\d+\\.\\d`).test(w) && sk === "tomorrow", `'${short(2)}' sorts by ${long(2)}'s score (Stevenson first) and shows that day's score chip; stored key still 'tomorrow' (${id}, ${JSON.stringify(w)}, ${sk})`); }
+    assert((await page.locator(".row .score").first().innerText()) === (await page.evaluate(() => { const r = computeAll().find(x => x.spot.id === "stevenson"); return r.r.score.toFixed(1); })), "the tile's main score is still the selected day's");
+
+    // two and three days out
+    await page.click("#days button >> nth=2"); await page.waitForTimeout(300); await openFirst(); det = await detailOf();
+    assert(/Lead time\n2–3 days out: expect the window to shift an hour or two\./i.test(det) && new RegExp(`${short(2)} morning · 7a–10a`, "i").test(det), "two days out: '2–3 days out' lead line, rows labelled " + short(2));
+    assert((await sortBtn("score").innerText()) === short(2) && (await sortBtn("tomorrow").innerText()) === short(3), `sort buttons read ${short(2)} / ${short(3)}`);
+
+    // the last forecast day
+    await page.click("#days button >> nth=4"); await page.waitForTimeout(300);
+    assert((await sortBtn("score").innerText()) === short(4) && (await sortBtn("tomorrow").isHidden()) && (await sortBtn("distance").isVisible()), `last day: first button reads ${short(4)}, the second is hidden, Distance stays`);
+    assert((await sortBtn("score").getAttribute("aria-pressed")) === "true" && (await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).sort)) === "tomorrow", "with no next day the day sort is pressed; the stored key is untouched");
+    assert(!new RegExp(`\\b(${short(0)}|${short(1)}|${short(2)}|${short(3)}|${short(4)}|${short(5)}) \\d+\\.\\d`).test(await text(page, "#list")), "no next-day score chips on the last day");
+    await openFirst(); det = await detailOf();
+    assert(/Lead time\n4–5 days out: trust the pattern, not the hour\./i.test(det) && new RegExp(`^${long(4)}, hour by hour`, "i").test(det), "last day: '4–5 days out' lead line, chart titled with the day");
+    assert(new RegExp(`^\\d+\\.\\d\nBest bet · ${short(4)} · within 1h30\n`, "i").test(await text(page, "#hero")), "hero format holds on the last day");
+    // nothing qualifies: same hero layout
+    await page.evaluate(() => { settings.radius = 30; render(); }); await page.waitForTimeout(200);
+    const heroN = await text(page, "#hero");
+    assert(new RegExp(`^–\nBest bet · ${short(4)} · within 30 min\nNothing worth the drive\n(Further out: Stevenson scores \\d+\\.\\d at 1h05\\.|No spot in the forecast scores above 4 on ${long(4)}\\.)`, "i").test(heroN), "nothing in range: same layout (score slot, label, name, line), 'Nothing worth the drive': " + heroN.split("\n").slice(0, 4).join(" | "));
+    await page.click("#days button >> nth=0"); await page.waitForTimeout(300);
+    assert((await sortBtn("tomorrow").isVisible()) && (await sortBtn("tomorrow").innerText()) === short(1) && (await sortBtn("tomorrow").getAttribute("aria-pressed")) === "true", "back on today the second button returns, labelled " + short(1) + ", pressed again since the stored sort is still 'tomorrow'");
+    assert(errors.length === 0, "selected day: no page errors (" + errors.join(" | ") + ")");
+    await ctx.close();
   }
 
   /* ---------- 2. away mode by place name ---------- */
