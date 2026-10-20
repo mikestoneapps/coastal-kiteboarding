@@ -40,8 +40,8 @@ const rawDoc = () => doc((d, h) => ({ spd: 12 + (h % 5), gst: 16 + (h % 5), ecmw
   vm.createContext(sandbox);
   vm.runInContext(block + "\nthis.pageDayScore=dayScore; this.pageConsensus=consensus; this.pageModelSpread=modelSpread;", sandbox);
   let n = 0, same = 0;
-  const sameModels = (a, b) => (a == null && b == null) || (a && b && near(a.lo, b.lo) && near(a.hi, b.hi) && a.loLabel === b.loLabel && a.hiLabel === b.hiLabel && a.n === b.n);
-  for (const spot of SPOTS) for (const style of ["freeride", "wave", "foil"]) for (const f of [doc(great), doc(varied), scoring.consensus(rawDoc())]) for (const d of DAYSK) {
+  const sameModels = (a, b) => (a == null && b == null) || (a && b && near(a.lo, b.lo) && near(a.hi, b.hi) && a.loLabel === b.loLabel && a.hiLabel === b.hiLabel && a.n === b.n && near(a.swing, b.swing));
+  for (const spot of SPOTS) for (const style of ["freeride", "wave", "foil"]) for (const f of [doc(great), doc(varied), scoring.consensus(rawDoc()), scoring.consensus(rawDoc(), spot.model)]) for (const d of DAYSK) {
     const p = sandbox.pageDayScore(spot, f, d, style);
     const s = scoring.dayScore(spot, f, d, style, weights, scoring.limitsFor({ comfort, overrides }, spot.id));
     n++;
@@ -68,6 +68,20 @@ const rawDoc = () => doc((d, h) => ({ spd: 12 + (h % 5), gst: 16 + (h % 5), ecmw
   assert(rl.models && rl.models.n === 3 && rl.agree === "Models disagree", "legacy doc: best match + GFS + ICON vote, as before");
   const rOne = scoring.dayScore(SPOTS[0], { ...raw, m: {} }, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS);
   assert(rOne.agree === null && rOne.models === null, "a single model: no confidence chip");
+  // per-spot model: the Gorge spots score on NBM, falling back to the median for an hour NBM lacks
+  const gorge = SPOTS.filter(s => s.region === "Gorge").map(s => s.id).sort().join();
+  assert(gorge === "hoodriver,rufus,stevenson" && SPOTS.every(s => (s.model === "nbm") === (s.region === "Gorge")), "spots.json: exactly the three Gorge spots carry model \"nbm\"");
+  const cn = scoring.consensus(raw, "nbm"), pcn = sandbox.pageConsensus(raw, "nbm");
+  assert(JSON.stringify(cn.spd) === JSON.stringify(pcn.spd) && JSON.stringify(cn.gst) === JSON.stringify(pcn.gst) && cn.basis === pcn.basis, "consensus(doc, \"nbm\"): page and scoring.js build the same series");
+  assert(cn.basis === "nbm" && cn.spd[9] === 15 && cn.gst[9] === 19 && c.spd[9] === 16 && c.gst[9] === 20 && cn.spd[i0] === 16 && c.basis === "median", "nbm: hour 9 is NBM's 15/19 (bm 16, ECMWF 19: the median would be 16/20); hour 0, where NBM has none, is the median 16; basis says which");
+  assert(scoring.consensus({ ...raw, m: { bm: raw.m.bm, ecmwf: raw.m.ecmwf } }, "nbm").basis === "median" && scoring.consensus(legacy, "nbm") === legacy && scoring.consensus(raw, "median").spd[9] === 16, "a doc without an NBM series falls back to the median (or stays best match); \"median\" is the default");
+  // the tile's confidence chip: only when the spread moves the score by 2+ (modelSwing)
+  const sw = (fn, spot = SPOTS[0]) => { const f = scoring.consensus(doc(fn)); return scoring.dayScore(spot, f, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS); };
+  const rA = sw(() => ({ spd: 25, gst: 28, gfs: 23, icon: 27 })), rB = sw(() => ({ spd: 12, gst: 14, gfs: 10, icon: 14 }));
+  assert(rA.agree === "Models agree" && rA.models.swing < 2 && rB.agree === "Models agree" && rB.models.swing >= 2, `the same 4 kn spread: quiet at 25 kn (swing ${rA.models.swing}), a band at 12 kn (swing ${rB.models.swing}, 10 kn is too light)`);
+  const rC = sw(() => ({ spd: 20, gst: 24, gfs: 26, icon: 10 }));   // 30 would gust past the default 34 kn comfort limit and score 0 like the 10
+  assert(rC.agree === "Models disagree" && rC.models.swing >= 2 && rC.models.loKey === "icon" && rC.models.hiKey === "gfs", "10 vs 26 kn: swing 2+ and the extremes are keyed (the parity loop above checks the page computes the same swing)");
+  assert(scoring.dayScore(SPOTS[0], { ...raw, m: {} }, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS).models === null && rl.models.swing != null, "no models: no swing; a legacy doc still gets one (best match is its own series)");
   // fetchForecasts: one five-model call, consensus applied, three-model fallback if the API rejects a model id
   {
     const calls = [];

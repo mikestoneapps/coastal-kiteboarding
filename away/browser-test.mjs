@@ -267,8 +267,8 @@ try {
     const firstId = await page.getAttribute(".row", "id");
     await page.click(".row .head"); await page.waitForTimeout(200);
     let det = await text(page, "#" + firstId.replace("row-", "detail-"));
-    assert(/Models\n8–30 kn/i.test(det) && /GFS highest, ICON lowest/.test(det) && /Models disagree/.test(det), "detail shows the five-model spread for the window and names the extremes: " + (det.match(/Models\n[^\n]*/i) || [""])[0]);
-    assert(/3-model median, for/.test(det) && /in 16 kn/.test(det), "the next-hour tiles say what they are (3-model median) and the kite tile has its unit");
+    assert(/Models\nModels say 8–30 kn; the score uses (NBM|the middle)$/im.test(det) && /Confidence\nModels disagree/i.test(det), "detail shows the five-model spread in one line and the Confidence verdict: " + (det.match(/Models\n[^\n]*/i) || [""])[0]);
+    assert((/^hoodriver|stevenson|rufus$/.test(firstId.replace("row-", "")) ? /NBM, for/ : /3-model median, for/).test(det) && /in 16 kn/.test(det), "the next-hour tiles say what they are (NBM at a Gorge spot, else 3-model median) and the kite tile has its unit");
     assert(/Station reads|Wind measured now\n/i.test(det), "station rows still render");
     // Rider -> mph: display only, everything else unchanged
     await page.click("#openSettings"); await page.waitForSelector("#units button");
@@ -279,7 +279,7 @@ try {
     await page.click("#closeSheet"); await page.waitForTimeout(200);
     assert(/^18g22 mph /.test(await first(page, ".row .wind")) && /18g22 mph /.test(await text(page, "#hero")) && / · mph · /.test(await text(page, "#sub")), "rows, hero and header switch to mph (16 kn -> 18, 19 -> 22)");
     det = await text(page, "#" + firstId.replace("row-", "detail-"));
-    assert(/Models\n9–35 mph/i.test(det) && /in 18 mph/.test(det) && /18 mph/.test(det), "the open detail converts too (spread 8–30 kn -> 9–35 mph)");
+    assert(/Models say 9–35 mph; the score uses/i.test(det) && /in 18 mph/.test(det) && /18 mph/.test(det), "the open detail converts too (spread 8–30 kn -> 9–35 mph)");
     assert(/18g22 mph/.test(await page.locator(".row [data-share]").first().getAttribute("data-share")), "the share text carries the unit");
     const scoresKn = await page.evaluate(() => [...document.querySelectorAll(".row .score")].map(e => e.textContent));
     await page.reload(); await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(800);
@@ -300,7 +300,7 @@ try {
     assert(/^18g22 kn /.test(await first(old.page, ".row .wind")) && / · knots · /.test(await text(old.page, "#sub")), "older cache + no units setting: renders from the cache in knots");
     await old.page.click(".row .head"); await old.page.waitForTimeout(200);
     const odet = await text(old.page, "#" + (await old.page.getAttribute(".row", "id")).replace("row-", "detail-"));
-    assert(/Models\n10–26 kn/i.test(odet) && /ICON highest, GFS lowest/.test(odet) && /model, for/.test(odet) && !/3-model/.test(odet), "legacy doc: best match + GFS + ICON vote, and the tiles don't claim a median: " + (odet.match(/Models\n[^\n]*/i) || [""])[0]);
+    assert(/Models say 10–26 kn; the score uses best match/i.test(odet) && /model, for/.test(odet) && !/3-model|NBM, for/.test(odet), "legacy doc: best match + GFS + ICON vote, and the tiles don't claim a median or NBM: " + (odet.match(/Models\n[^\n]*/i) || [""])[0]);
     assert(old.log.filter(l => /^models=/.test(l)).length === 2 && old.log.filter(l => /^models=/.test(l)).every(l => /best_match/.test(l)), "five-model call rejected (503) -> one retry with the three models -> the cache stays on screen");
     assert(old.errors.length === 0, "older cache: no page errors (" + old.errors.join(" | ") + ")");
     await old.ctx.close();
@@ -313,7 +313,7 @@ try {
     assert(calls === 2 && fb.log.includes("models=best_match,gfs_seamless,icon_seamless") && /^18g22 kn /.test(await first(fb.page, ".row .wind")), "400 on the five-model call -> three-model call -> scored as before");
     await fb.page.click(".row .head"); await fb.page.waitForTimeout(200);
     const fdet = await text(fb.page, "#" + (await fb.page.getAttribute(".row", "id")).replace("row-", "detail-"));
-    assert(/Models\n18 kn\nall 3 within a knot/i.test(fdet) && /Models agree/.test(fdet), "three identical models: 'all 3 within a knot', Models agree");
+    assert(/Models say 18 kn; the score uses best match/i.test(fdet) && /Models agree/.test(fdet), "three identical models: 'Models say 18 kn; the score uses best match', Models agree");
     assert(fb.errors.length === 0, "fallback: no page errors (" + fb.errors.join(" | ") + ")");
     await fb.ctx.close();
   }
@@ -359,11 +359,11 @@ try {
     await openFirst(); det = await detailOf();
     assert(new RegExp(`^${long(1)}, hour by hour\n`, "i").test(det), `chart titled '${long(1)}, hour by hour'`);
     assert(!/Wind measured|next hour|in 3 hours|in 5 hours|Station disagrees/i.test(det), "tomorrow's detail has no station row, no next-hour rows, no 'Station disagrees'");
-    const block = new RegExp(`${short(1)} morning · 7a–10a\n20 kn gusting 24 from the W ?\n3-model median, ${long(1)} 7a–10a average\n${short(1)} midday · 11a–2p\n20 kn gusting 24 from the W ?\n[^\n]*\n${short(1)} afternoon · 3p–6p\n20 kn gusting 24 from the W`, "i");
+    const block = new RegExp(`${short(1)} morning · 7a–10a\n20 kn gusting 24 from the W ?\n(?:3-model median|NBM), ${long(1)} 7a–10a average\n${short(1)} midday · 11a–2p\n20 kn gusting 24 from the W ?\n[^\n]*\n${short(1)} afternoon · 3p–6p\n20 kn gusting 24 from the W`, "i");
     assert(block.test(det), `morning / midday / afternoon rows for ${long(1)} (median model, gusts, direction): ` + (det.match(new RegExp(`${short(1)} morning[^]*?average`, "i")) || [""])[0].replace(/\n/g, " | "));
     assert(/Lead time\nTomorrow: hour-by-hour timing is usually good\./i.test(det), "lead-time line for tomorrow");
     assert(new RegExp(`the best 3-hour stretch ${long(1)};`).test(det), "the best-window row names the day");
-    assert(/Models agree/.test(await first(page, ".row .wind")), "the model-agreement chip shows on a planning day");
+    assert(!/Models agree/.test(await first(page, ".row .wind")) && /Confidence\nModels agree/i.test(det), "identical models: no confidence chip on the tile (the spread can't move the score), the detail keeps the Confidence row");
     // the second sort button: the day after the selected one
     await sortBtn("tomorrow").click(); await page.waitForTimeout(300);
     { const id = await page.getAttribute(".row", "id"), w = await first(page, ".row .wind"), sk = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).sort);

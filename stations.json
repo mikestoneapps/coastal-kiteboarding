@@ -275,6 +275,14 @@
  ],
  "florence": [
   {
+   "id": "AS531",
+   "name": "YACHTS Yachats",
+   "kind": "nws",
+   "lat": 44.34303,
+   "lon": -124.09212,
+   "dist_mi": 23.1
+  },
+  {
    "id": "46229",
    "name": "Umpqua offshore buoy",
    "kind": "ndbc",
