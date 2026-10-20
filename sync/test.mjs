@@ -50,6 +50,22 @@ assert(L2.subs.length === 1 && L2.state.alerted["rufus|2026-10-17"].score === 8.
 r = await push("DELETE", { endpoint: "https://push.example/two" }); assert((await r.json()).count === 0, "unsubscribe -> 0");
 r = await req("/v1/admin/riders", "GET", undefined, A); assert((await r.json()).riders.length === 0, "rider without subscriptions is not listed");
 
+// push hygiene: the job reports each device's push status; a 404 or 410 from the push service deletes that subscription, nothing else is touched
+for (const e of ["one", "two", "three"]) await push("PUT", { subscription: sub(e) });
+r = await req("/v1/admin/riders/" + id, "PUT", { pushed: [{ endpoint: sub("one").endpoint, status: 201 }, { endpoint: sub("two").endpoint, status: 410 }, { endpoint: sub("three").endpoint, status: 404 }], state: { alerted: { "manzanita|2026-10-18": { score: 9.1 } }, sent: { "2026-10-17": 1 } } }, A);
+let J = await r.json(); assert(r.status === 200 && J.dropped === 2 && J.count === 1, "pushed statuses 201 / 410 / 404 -> the two gone subscriptions are deleted (dropped 2, 1 left)");
+r = await push("GET"); J = await r.json(); assert(J.endpoints.length === 1 && J.endpoints[0] === sub("one").endpoint, "the 201 device is still subscribed, the 410 and 404 devices are gone");
+r = await req("/v1/admin/riders", "GET", undefined, A); J = (await r.json()).riders[0]; assert(J.subs.length === 1 && J.state.alerted["manzanita|2026-10-18"].score === 9.1, "state written alongside; the admin list shows one device");
+await push("PUT", { subscription: sub("four") });   // a device that subscribed while the job was running
+r = await req("/v1/admin/riders/" + id, "PUT", { pushed: [{ endpoint: sub("one").endpoint, status: 500 }, { endpoint: sub("one").endpoint, status: 0 }, { endpoint: "https://push.example/unknown", status: 410 }] }, A);
+J = await r.json(); assert(J.dropped === 0 && J.count === 2, "a 500, a network failure (0) or an unknown endpoint delete nothing; the device that subscribed meanwhile is kept");
+r = await req("/v1/admin/riders/" + id, "PUT", { pushed: [{ endpoint: sub("one").endpoint, status: 410 }, { endpoint: sub("four").endpoint, status: "410" }] }, A);
+J = await r.json(); assert(J.dropped === 2 && J.count === 0 && !store.has("p:" + id), "every device gone (status as a number or a string) -> the subscription key is deleted");
+r = await req("/v1/admin/riders", "GET", undefined, A); assert((await r.json()).riders.length === 0, "a rider whose last device expired is no longer listed for the job");
+r = await req("/v1/admin/riders/" + id, "PUT", { pushed: [{ endpoint: sub("one").endpoint, status: 410 }] }, A); assert(r.status === 200 && (await r.json()).dropped === 0, "reporting a gone endpoint for a rider with no subscriptions is harmless");
+r = await req("/v1/admin/riders/" + id, "PUT", { pushed: "not a list", subs: [sub("five")] }, A); assert(r.status === 200 && (await push("GET").then(x => x.json())).endpoints[0] === sub("five").endpoint, "a malformed `pushed` is ignored; the older whole-list `subs` write still works");
+r = await req("/v1/admin/riders/" + id, "PUT", { subs: [] }, A); assert(r.status === 200 && !store.has("p:" + id), "subs: [] still clears the list (older job)");
+
 // rider photos (binary JPEG per spot, 100 KB max)
 const jpeg = n => { const b = new Uint8Array(n); b.set([0xff, 0xd8, 0xff, 0xe0]); for (let i = 4; i < n; i++) b[i] = (i * 31) & 0xff; return b; };
 const photo = (id, method, body, headers = {}, key = KEY) => worker.fetch(new Request("https://x.workers.dev/v1/photo/" + id, { method, headers: { Origin: ORIGIN, Authorization: "Bearer " + key, ...headers }, body }), env);

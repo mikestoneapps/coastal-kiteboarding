@@ -45,7 +45,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .narr{font-size:15px;line-height:1.35;margin:2px 0 10px;color:var(--fg)}.narr b{font-family:var(--display);font-weight:600}
 .notif{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:0 4px 14px rgba(0,0,0,.12);margin:8px 0;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}.notif .ic{width:34px;height:34px;border-radius:8px;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font:700 14px var(--display)}.notif .t{font:600 13px var(--body)}.notif .b{font-size:13px;color:var(--fg)}.notif .when{font-size:11px;color:var(--muted);float:right}
 .widget{width:170px;height:170px;border-radius:22px;background:linear-gradient(160deg,var(--accent),#0a3d50);color:#fff;padding:14px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(0,0,0,.2)}.widget .w1{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;opacity:.8}.widget .w2{font:700 40px var(--display);line-height:1}.widget .w3{font:600 16px var(--display);line-height:1.1}.widget .w4{font:500 12px var(--body);opacity:.85}
-.strip7{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0 12px}.strip7 div{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:6px 4px;text-align:center;min-width:0}.strip7 small{display:block;font:600 10px var(--body);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}.strip7 b{display:block;font:700 18px var(--display);line-height:1.1}.strip7 span{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip7{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin:6px 0 12px}.strip7 div{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:6px 4px;text-align:center;min-width:0}.strip7 small{display:block;font:600 10px var(--body);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}.strip7 b{display:block;font:700 16px var(--display);line-height:1.1}.strip7 span{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ticks{display:flex;justify-content:space-between;font:500 10px var(--body);color:var(--muted);margin:-2px 2px 4px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.dayspick{display:flex;gap:4px}.dayspick button{flex:1;border:1px solid var(--line);background:var(--surface2);color:var(--muted);font:600 12px var(--body);padding:6px 0;border-radius:6px;cursor:pointer}.dayspick button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:transparent}
 .seg{display:inline-flex;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
@@ -189,7 +189,7 @@ header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
 <input type="file" id="photoFile" accept="image/*" hidden>
 
 <script>
-const SPOTS = /*SPOTS*/[{"id":"stevenson","name":"Stevenson","region":"Gorge","lat":45.695,"lon":-121.885,"driveLO":65,"driveBC":185,"waves":false,"pass":false,"model":"nbm","dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. Bob's Beach launch; flat-ish river, good warm-up for the Gorge.","parking":"Bob's Beach lot off Cascade Ave, Stevenson WA","plat":45.6943,"plon":-121.8852},{"id":"hoodriver","name":"Hood River Sandbar","region":"Gorge","lat":45.716,"lon":-121.515,"driveLO":75,"driveBC":215,"waves":false,"pass":false,"model":"nbm","dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. 14\u201325 mph typical, 25\u201335+ when it's on. Sandbar is managed by the Columbia Gorge Kiteboarding Assoc.","parking":"Hood River Event Site / Sandbar lot (Port of Hood River, day fee)","plat":45.7159,"plon":-121.5141},{"id":"rufus","name":"Rufus (Rock Pile)","region":"Gorge","lat":45.692,"lon":-120.733,"driveLO":120,"driveBC":275,"waves":false,"pass":false,"model":"nbm","dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"East Gorge, west wind only. 12\u201350 mph depending on the pattern; often blowing when Hood River is light.","parking":"Rufus launch, Old Hwy 30 / I-84 exit 109","plat":45.6933,"plon":-120.7315},{"id":"fortstevens","name":"Fort Stevens / Clatsop Spit","region":"North Coast","lat":46.19,"lon":-123.98,"driveLO":125,"driveBC":120,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Northernmost coast spot, big open beach. Good for downwinders; watch the Columbia bar current.","parking":"Fort Stevens State Park, Parking Lot C (day-use fee or OR State Parks pass)","plat":46.2015,"plon":-123.9814},{"id":"gearhart","name":"Gearhart","region":"North Coast","lat":46.03,"lon":-123.93,"driveLO":110,"driveBC":100,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Summer NW thermal starts ~2pm, 15\u201330 mph. Drive-on beach; cars on the sand are the hazard.","parking":"Gearhart beach access at end of 10th St (drive on sand)","plat":46.0268,"plon":-123.9262},{"id":"manzanita","name":"Manzanita / Nehalem Bay","region":"North Coast","lat":45.72,"lon":-123.94,"driveLO":105,"driveBC":60,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Windiest spot on the north coast; usually blows ~10 mph stronger than nearby beaches. Bring the small kite.","parking":"Nehalem Bay State Park day-use lot (OR State Parks pass)","plat":45.6985,"plon":-123.9315},{"id":"rockaway","name":"Rockaway Beach","region":"North Coast","lat":45.613,"lon":-123.95,"driveLO":100,"driveBC":50,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long straight beach, easy access from 101. Lighter than Manzanita on the same day.","parking":"Rockaway Beach wayside lot, S 1st Ave","plat":45.6135,"plon":-123.9448},{"id":"bayocean","name":"Bayocean Spit","region":"Tillamook Bay","lat":45.53,"lon":-123.95,"driveLO":100,"driveBC":40,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"North of the Pacific City house, on the Tillamook Bay spit. Ocean beach on the outside; the bay side flattens out at lower tide.","parking":"Bayocean Peninsula trailhead lot, Bayocean Rd","plat":45.5263,"plon":-123.9469},{"id":"oceanside","name":"Oceanside","region":"Tillamook Bay","lat":45.46,"lon":-123.97,"driveLO":105,"driveBC":30,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Under the cliffs, quiet. On a good swell day it's one of the best wave spots on the north coast.","parking":"Oceanside Beach State Recreation Site lot, Pacific Ave","plat":45.4603,"plon":-123.9693},{"id":"capelookout","name":"Cape Lookout","region":"Tillamook Bay","lat":45.36,"lon":-123.97,"driveLO":115,"driveBC":20,"waves":true,"pass":true,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long beach north of the cape; the headland shelters S wind and accelerates N wind.","parking":"Cape Lookout State Park day-use lot (OR State Parks pass)","plat":45.3614,"plon":-123.9707},{"id":"pacificcity","name":"Pacific City","region":"Central Coast","lat":45.2,"lon":-123.97,"driveLO":110,"driveBC":5,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Cape Kiwanda bends the N wind; launch well south of the dory boats and surfers.","parking":"Cape Kiwanda lot (paid) or Bob Straub State Park lot to the south","plat":45.2155,"plon":-123.9709},{"id":"roadsend","name":"Roads End, Lincoln City","region":"Central Coast","lat":45.01,"lon":-124.01,"driveLO":115,"driveBC":25,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long stretch of beach at the north end of town, away from the crowds.","parking":"Roads End State Recreation Site lot, Logan Rd","plat":45.0083,"plon":-124.0107},{"id":"newport","name":"Newport South Jetty","region":"Central Coast","lat":44.61,"lon":-124.07,"driveLO":150,"driveBC":70,"waves":true,"pass":false,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Some of the best down-the-line wave riding on the coast when NW wind meets NW swell.","parking":"South Jetty lot, SW Jetty Way (South Beach State Park)","plat":44.6103,"plon":-124.071},{"id":"florence","name":"Florence South Jetty","region":"Central Coast","lat":44.01,"lon":-124.13,"driveLO":180,"driveBC":140,"waves":true,"pass":true,"stationRadiusMi":35,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"N wind: ride the south jetty. S wind (winter, gustier): ride the north jetty. Can hit 40+; go early on big days.","parking":"South Jetty Rd beach lot, Oregon Dunes NRA (day fee)","plat":44.012,"plon":-124.131},{"id":"floras","name":"Floras Lake","region":"South Coast","lat":42.9,"lon":-124.5,"driveLO":300,"driveBC":280,"waves":false,"pass":false,"dir":{"work":[[170,360],[0,60]],"best":[[300,360],[0,30]],"off":[[90,160]]},"notes":"Freshwater lake behind the dunes, steady N wind, waist-deep launch. Worth the drive when it's nuking everywhere else. 8\u201310m kites typical.","parking":"Boice Cope County Park, Floras Lake Loop Rd","plat":42.9008,"plon":-124.5035}];
+const SPOTS = /*SPOTS*/[{"id":"stevenson","name":"Stevenson","region":"Gorge","lat":45.695,"lon":-121.885,"driveLO":65,"driveBC":185,"waves":false,"pass":false,"model":"nbm","dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. Bob's Beach launch; flat-ish river, good warm-up for the Gorge.","parking":"Bob's Beach lot off Cascade Ave, Stevenson WA","plat":45.6943,"plon":-121.8852},{"id":"hoodriver","name":"Hood River Sandbar","region":"Gorge","lat":45.716,"lon":-121.515,"driveLO":75,"driveBC":215,"waves":false,"pass":false,"model":"nbm","dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"West wind only. 14\u201325 mph typical, 25\u201335+ when it's on. Sandbar is managed by the Columbia Gorge Kiteboarding Assoc.","parking":"Hood River Event Site / Sandbar lot (Port of Hood River, day fee)","plat":45.7159,"plon":-121.5141},{"id":"rufus","name":"Rufus (Rock Pile)","region":"Gorge","lat":45.692,"lon":-120.733,"driveLO":120,"driveBC":275,"waves":false,"pass":false,"model":"nbm","dir":{"work":[[230,310]],"best":[[250,290]],"off":[[50,130]]},"notes":"East Gorge, west wind only. 12\u201350 mph depending on the pattern; often blowing when Hood River is light.","parking":"Rufus launch, Old Hwy 30 / I-84 exit 109","plat":45.6933,"plon":-120.7315},{"id":"fortstevens","name":"Fort Stevens / Clatsop Spit","region":"North Coast","lat":46.19,"lon":-123.98,"driveLO":125,"driveBC":120,"waves":true,"pass":true,"tideStation":"9439011","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Northernmost coast spot, big open beach. Good for downwinders; watch the Columbia bar current.","parking":"Fort Stevens State Park, Parking Lot C (day-use fee or OR State Parks pass)","plat":46.2015,"plon":-123.9814},{"id":"gearhart","name":"Gearhart","region":"North Coast","lat":46.03,"lon":-123.93,"driveLO":110,"driveBC":100,"waves":true,"pass":false,"tideStation":"9439011","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Summer NW thermal starts ~2pm, 15\u201330 mph. Drive-on beach; cars on the sand are the hazard.","parking":"Gearhart beach access at end of 10th St (drive on sand)","plat":46.0268,"plon":-123.9262},{"id":"manzanita","name":"Manzanita / Nehalem Bay","region":"North Coast","lat":45.72,"lon":-123.94,"driveLO":105,"driveBC":60,"waves":true,"pass":true,"tideStation":"9437540","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Windiest spot on the north coast; usually blows ~10 mph stronger than nearby beaches. Bring the small kite.","parking":"Nehalem Bay State Park day-use lot (OR State Parks pass)","plat":45.6985,"plon":-123.9315},{"id":"rockaway","name":"Rockaway Beach","region":"North Coast","lat":45.613,"lon":-123.95,"driveLO":100,"driveBC":50,"waves":true,"pass":false,"tideStation":"9437540","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long straight beach, easy access from 101. Lighter than Manzanita on the same day.","parking":"Rockaway Beach wayside lot, S 1st Ave","plat":45.6135,"plon":-123.9448},{"id":"bayocean","name":"Bayocean Spit","region":"Tillamook Bay","lat":45.53,"lon":-123.95,"driveLO":100,"driveBC":40,"waves":true,"pass":false,"tideStation":"9437540","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"North of the Pacific City house, on the Tillamook Bay spit. Ocean beach on the outside; the bay side flattens out at lower tide.","parking":"Bayocean Peninsula trailhead lot, Bayocean Rd","plat":45.5263,"plon":-123.9469},{"id":"oceanside","name":"Oceanside","region":"Tillamook Bay","lat":45.46,"lon":-123.97,"driveLO":105,"driveBC":30,"waves":true,"pass":false,"tideStation":"9437540","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Under the cliffs, quiet. On a good swell day it's one of the best wave spots on the north coast.","parking":"Oceanside Beach State Recreation Site lot, Pacific Ave","plat":45.4603,"plon":-123.9693},{"id":"capelookout","name":"Cape Lookout","region":"Tillamook Bay","lat":45.36,"lon":-123.97,"driveLO":115,"driveBC":20,"waves":true,"pass":true,"tideStation":"9437540","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long beach north of the cape; the headland shelters S wind and accelerates N wind.","parking":"Cape Lookout State Park day-use lot (OR State Parks pass)","plat":45.3614,"plon":-123.9707},{"id":"pacificcity","name":"Pacific City","region":"Central Coast","lat":45.2,"lon":-123.97,"driveLO":110,"driveBC":5,"waves":true,"pass":false,"tideStation":"9437540","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Cape Kiwanda bends the N wind; launch well south of the dory boats and surfers.","parking":"Cape Kiwanda lot (paid) or Bob Straub State Park lot to the south","plat":45.2155,"plon":-123.9709},{"id":"roadsend","name":"Roads End, Lincoln City","region":"Central Coast","lat":45.01,"lon":-124.01,"driveLO":115,"driveBC":25,"waves":true,"pass":false,"tideStation":"9435380","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Long stretch of beach at the north end of town, away from the crowds.","parking":"Roads End State Recreation Site lot, Logan Rd","plat":45.0083,"plon":-124.0107},{"id":"newport","name":"Newport South Jetty","region":"Central Coast","lat":44.61,"lon":-124.07,"driveLO":150,"driveBC":70,"waves":true,"pass":false,"tideStation":"9435380","dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"Some of the best down-the-line wave riding on the coast when NW wind meets NW swell.","parking":"South Jetty lot, SW Jetty Way (South Beach State Park)","plat":44.6103,"plon":-124.071},{"id":"florence","name":"Florence South Jetty","region":"Central Coast","lat":44.01,"lon":-124.13,"driveLO":180,"driveBC":140,"waves":true,"pass":true,"tideStation":"9435380","stationRadiusMi":35,"dir":{"work":[[170,360],[0,10]],"best":[[280,345],[195,240]],"off":[[40,140]]},"notes":"N wind: ride the south jetty. S wind (winter, gustier): ride the north jetty. Can hit 40+; go early on big days.","parking":"South Jetty Rd beach lot, Oregon Dunes NRA (day fee)","plat":44.012,"plon":-124.131},{"id":"floras","name":"Floras Lake","region":"South Coast","lat":42.9,"lon":-124.5,"driveLO":300,"driveBC":280,"waves":false,"pass":false,"dir":{"work":[[170,360],[0,60]],"best":[[300,360],[0,30]],"off":[[90,160]]},"notes":"Freshwater lake behind the dunes, steady N wind, waist-deep launch. Worth the drive when it's nuking everywhere else. 8\u201310m kites typical.","parking":"Boice Cope County Park, Floras Lake Loop Rd","plat":42.9008,"plon":-124.5035}];
 const HOMES = {LO:{name:"Lake Oswego",lat:45.4207,lon:-122.6706,key:"driveLO"}, BC:{name:"Pacific City",lat:45.2020,lon:-123.9627,key:"driveBC"}};
 const PLACES = [["Portland (downtown)",45.5202,-122.6742],["Hood River",45.7054,-121.5215],["Seaside",45.9932,-123.9226],["Cannon Beach",45.8918,-123.9615],["Tillamook",45.4562,-123.8440],["Lincoln City",44.9582,-124.0179],["Newport",44.6368,-124.0535],["Salem",44.9429,-123.0351],["Corvallis",44.5646,-123.2620],["Eugene",44.0521,-123.0868],["Bend",44.0582,-121.3153],["Vancouver WA",45.6387,-122.6615]];
 const DEFAULT_WEIGHTS = {speed:1, dir:1, gust:1, wave:1, wx:1};
@@ -213,12 +213,14 @@ function driveMins(spot){
 function estDrive(h,lat,lon){ return Math.round(haversineMi(h.lat,h.lon,lat,lon)*1.35/47*60/5)*5; }   // same estimate as driveMins() for a custom base
 function refreshKeptDrives(){ for(const k of settings.kept){ if(k.lat==null||k.lon==null) continue; k.driveLO=estDrive(HOMES.LO,k.lat,k.lon); k.driveBC=estDrive(HOMES.BC,k.lat,k.lon); } }   // added spots keep estimated drives; they follow the houses (the coast house moved in Oct 2026)
 const STYLES = {freeride:{lo:14,peak:20,hi:27,label:"Freeride"}, wave:{lo:14,peak:19,hi:24,label:"Wave"}, foil:{lo:9,peak:13,hi:18,label:"Foil"}};
-const DAY_START=7, DAY_END=19, NUKE=35;
+const DAY_START=7, DAY_END=19, NUKE=35;   // DAY_START..DAY_END: the candidate hours when a doc carries no sunrise/sunset (an older cache); otherwise daylightIdx() uses the day's own
 const KG=0.4536;
 const GLYPH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h8a2 2 0 1 1-2 2"/></svg>';  // shown for any spot without a photo (photo:false, or the image fails to load)
 
 const DEFAULT_COMFORT={minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3, stretch:true};
 const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true};
+const ALERT_DAYS=5;   // alerts only ever cover the first five forecast days; days 6–7 are a trend (alerts/lib.mjs applies the same cap)
+const TREND_FROM=5;   // lead days 5 and 6 (the 6th and 7th forecast day) are labelled "trend": the models rarely agree that far out
 let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], photos:{}, units:"kn", updatedAt:null, v:2};   // units: "kn" | "mph", display only; every number inside stays in knots
 try{ const s=JSON.parse(localStorage.getItem("goc.settings")||"null"); if(s) settings={...settings,...s, weights:{...DEFAULT_WEIGHTS,...(s.weights||{})}, comfort:{...DEFAULT_COMFORT,...(s.comfort||{})}, alerts:{...DEFAULT_ALERTS,...(s.alerts||{})}, overrides:s.overrides||{}, kept:Array.isArray(s.kept)?s.kept:[], photos:(s.photos&&typeof s.photos==="object")?s.photos:{}, units:s.units==="mph"?"mph":"kn"}; }catch(e){}
 function allSpots(){ const extra=settings.kept.concat(awaySpots()); return extra.length? SPOTS.concat(extra) : SPOTS; }   // awaySpots() is [] unless away from home (Phase 4)
@@ -340,6 +342,19 @@ function hourScore(spot, f, i, style){
   return {v:gate?0:v*10, gate:g&&g.gate, why: worst.why||worst.gate, detail: g? g.detail: worst.detail, mine: g? !!g.mine: !!worst.mine};
 }
 function m2ft(m){ return m==null?null:m*3.281; }
+/* daylight: the candidate hours are the day's own sunrise to sunset (Open-Meteo daily=sunrise,sunset, stored on the doc as
+   f.sun[day]=[riseISO,setISO] in the forecast's time zone). An hour counts when its midpoint is in daylight, so 07:33–18:20 gives
+   the 8a..5p slots (the 7a slot's midpoint is before sunrise, the 6p slot's after sunset). A doc without sun data falls back to the fixed 7a–7p. */
+function sunHours(f, day){
+  const s=f.sun&&f.sun[day]; if(!s||!s[0]||!s[1]) return null;
+  const h=t=>{ const m=String(t).match(/T(\d\d):(\d\d)/); return m? +m[1]+(+m[2])/60 : null; };
+  const r=h(s[0]), e=h(s[1]); return r==null||e==null||e<=r? null : [r,e];
+}
+function daylightIdx(f, day){
+  const sun=sunHours(f,day), idx=[];
+  f.time.forEach((t,i)=>{ if(!t.startsWith(day)) return; const h=+t.slice(11,13); if(sun? (h+0.5>=sun[0] && h+0.5<=sun[1]) : (h>=DAY_START&&h<=DAY_END)) idx.push(i); });
+  return idx;
+}
 // Age of a station reading in minutes, from its own timestamp (age_min in obs.json is frozen at fetch time).
 function ageOf(o){ const t=o.time? Date.parse(o.time):NaN; return isNaN(t)? (o.age_min==null?null:o.age_min) : Math.max(0,Math.round((Date.now()-t)/60000)); }
 function agoText(min){ return min==null? "age unknown" : min<60? min+" min ago" : min<1440? Math.round(min/60)+"h ago" : Math.round(min/1440)+"d ago"; }
@@ -392,7 +407,7 @@ function dayScore(spot, f, day, style){
   const todayLA=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
   const raw=f;   // the forecast as fetched: the disagreement flag compares the station with this, not with the blended hour
   if(day===todayLA) f=blendToday(spot,f);
-  const idx=[]; f.time.forEach((t,i)=>{ if(t.startsWith(day)){ const h=+t.slice(11,13); if(h>=DAY_START&&h<=DAY_END) idx.push(i);} });
+  const idx=daylightIdx(f,day);
   if(!idx.length) return null;
   const hs=idx.map(i=>({i,...hourScore(spot,f,i,style)}));
   const N=Math.min(Math.max(Math.round(limitsFor(spot.id).minHours||3),1),6);
@@ -433,14 +448,16 @@ function cls(s,gate){ return gate?"gate": s>=7?"good": s>=4?"ok":"poor"; }
 function kiteFor(spd){ const kg=settings.weightLb*KG; const ideal=kg*2.175/Math.max(spd,6); const ks=settings.kites.length?settings.kites:[7,9,12,14]; return ks.reduce((a,k)=>Math.abs(k-ideal)<Math.abs(a-ideal)?k:a, ks[0]); }
 function dayLabel(d, i){ const dt=new Date(d+"T12:00:00"); const today=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
   const wd=dt.toLocaleDateString("en-US",{weekday:"short",timeZone:"America/Los_Angeles"}), md=dt.toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:"America/Los_Angeles"});
-  if(d===today) return ["Today",wd+" "+md]; const tm=new Date(new Date(today+"T12:00:00").getTime()+864e5).toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}); if(d===tm) return ["Tomorrow",wd+" "+md]; return [wd,md]; }
+  if(d===today) return ["Today",wd+" "+md]; const tm=new Date(new Date(today+"T12:00:00").getTime()+864e5).toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}); if(d===tm) return ["Tomorrow",wd+" "+md]; return [wd,md+(isTrend(d)?" · trend":"")]; }
 function todayKey(){ return new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}); }
 function isToday(d){ return d===todayKey(); }
 function dayShort(d){ return new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",timeZone:"America/Los_Angeles"}); }   // "Fri"
 function dayLong(d){ return new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",timeZone:"America/Los_Angeles"}); }     // "Friday"
 function nextDay(){ const i=dayKeys.indexOf(selDay); return i>=0? dayKeys[i+1]||null : null; }                                          // the forecast day after the selected one, null on the last day
 function leadDays(d){ return Math.round((Date.parse(d+"T12:00:00Z")-Date.parse(todayKey()+"T12:00:00Z"))/864e5); }                     // 0 today, 1 tomorrow …
-function leadText(n){ return n<=0? null : n===1? "Tomorrow: hour-by-hour timing is usually good." : n<=3? "2–3 days out: expect the window to shift an hour or two." : "4–5 days out: trust the pattern, not the hour."; }
+function isTrend(d){ return leadDays(d)>=TREND_FROM; }                                                                                        // the 6th and 7th forecast day
+function leadText(n){ return n<=0? null : n===1? "Tomorrow: hour-by-hour timing is usually good." : n<=3? "2–3 days out: expect the window to shift an hour or two." : n<TREND_FROM? "4 days out: trust the pattern, not the hour." : "5–6 days out: a trend, not a forecast. The models rarely agree this far ahead; check again closer to the day."; }
+function hm(t){ const M=Math.round(t*60), h=Math.floor(M/60)%24, m=M%60; return `${((h+11)%12)+1}:${String(m).padStart(2,"0")}${h<12?"a":"p"}`; }   // decimal hour -> "3:12p" (sunrise, high/low tide)
 function effSort(){ return settings.sort==="tomorrow"&&!nextDay()? "score" : settings.sort; }   // the stored key stays "tomorrow"; on the last forecast day it behaves as the day sort
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function mapPointUrl(lat,lon){ return `https://www.google.com/maps/search/?api=1&query=${lat}%2C${lon}`; }   // a point, not directions: "Check on map" in the Add-a-spot sheet
@@ -483,7 +500,7 @@ function alertDigest(){
     const bp=bestPerDay(hk, A.maxDrive, settings.style);
     const saveHome=settings.home; settings.home=hk;
     const hits=[];
-    dayKeys.slice(0, A.lead+1).forEach((d,di)=>{
+    dayKeys.slice(0, Math.min(A.lead+1, ALERT_DAYS)).forEach((d,di)=>{
       if(di===0 && !A.sameDay) return;
       const dow=new Date(d+"T12:00:00").getDay(); if(!A.days.includes(dow)) return;
       const rows=allSpots().map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const drive=driveMins(spot); if(drive==null||drive>A.maxDrive) return null; const r=dayScore(spot,f,d,settings.style); return r?{spot,r,drive}:null; })
@@ -506,6 +523,7 @@ function laterDay(){
   // The best-scoring later forecast day whose best spot within the radius scores 6+ (earliest on a tie), for the hero when the selected day is dead. null if none.
   let best=null;
   for(const d of dayKeys.slice(dayKeys.indexOf(selDay)+1)){
+    if(isTrend(d)) continue;   // a 6+ on a trend day is not a promise worth a card
     let top=null;
     for(const spot of allSpots()){ const f=forecasts[spot.id]; if(!f) continue; const r=dayScore(spot,f,d,settings.style); if(!r) continue; const drive=driveMins(spot)??999; const x={spot,r,drive,d};
       if(!withinRadius(x)) continue; if(!top||r.score>top.r.score||(r.score===top.r.score&&drive<top.drive)) top=x; }
@@ -594,21 +612,44 @@ function row({spot,r,rt,drive,f}){
 }
 function detail({spot,r,f}){
   f=f||forecasts[spot.id];
-  const h=r.hours; const W=640,H=150,pad=22,bw=(W-pad*2)/h.length;
-  const maxS=Math.max(30,...h.map(x=>f.gst[x.i]||0))+2;
-  const y=v=>H-28-(v/maxS)*(H-50);
-  let svg=`<div class="striphead">${dayLong(selDay)}, hour by hour</div><svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="${dayLong(selDay)} hour by hour: wind for ${esc(spot.name)} in ${unitWord()}">`;
+  // Chart hours: the scored daylight hours (r.idx) plus one slot each side of the day, so the night shading shows where the day begins and ends.
+  // Bars outside the scored hours are drawn grey: the forecast is there, the score never looks at it.
+  const di=r.idx, ci=[]; for(let i=Math.max(0,di[0]-1);i<=Math.min(f.time.length-1,di[di.length-1]+1);i++) if(f.time[i].startsWith(selDay)) ci.push(i);
+  const scored={}; r.hours.forEach(x=>{ scored[x.i]=x; });
+  const td=tideFor(spot,selDay);   // null for the Gorge, the lake, added spots, or until the predictions land
+  const W=640,TB=td?40:0,BASE=122,H=150+TB,pad=22,bw=(W-pad*2)/ci.length;
+  const maxS=Math.max(30,...ci.map(i=>f.gst[i]||0))+2;
+  const y=v=>BASE-(v/maxS)*(BASE-22);
+  const h0=+f.time[ci[0]].slice(11,13), xt=t=>pad+(t-h0)*bw+bw/2, xc=t=>Math.max(pad,Math.min(W-pad,xt(t)));   // decimal hour of the day -> x (bar k is centred on hour h0+k)
+  const sun=sunHours(f,selDay);
+  let svg=`<div class="striphead">${dayLong(selDay)}, hour by hour${td?` · tide at ${esc(td.station)}`:""}</div><svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="${dayLong(selDay)} hour by hour: wind for ${esc(spot.name)} in ${unitWord()}${sun?`, sunrise ${hm(sun[0])}, sunset ${hm(sun[1])}`:""}${td?`, tide at ${esc(td.station)} in feet`:""}">`;
+  if(sun){   // night: before sunrise and after sunset, with the times at the lines
+    const xr=xc(sun[0]), xs=xc(sun[1]);
+    if(xr>pad) svg+=`<rect x="${pad}" y="8" width="${(xr-pad).toFixed(1)}" height="${BASE-8}" fill="var(--fg)" opacity=".07"/>`;
+    if(xs<W-pad) svg+=`<rect x="${xs.toFixed(1)}" y="8" width="${(W-pad-xs).toFixed(1)}" height="${BASE-8}" fill="var(--fg)" opacity=".07"/>`;
+    for(const [x,t,anchor,dx] of [[xr,sun[0],"start",3],[xs,sun[1],"end",-3]]) if(x>pad&&x<W-pad) svg+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="8" y2="${BASE}" stroke="var(--muted)" stroke-dasharray="2 3" stroke-width="1"/><text x="${(x+dx).toFixed(1)}" y="17" font-size="9" text-anchor="${anchor}" fill="var(--muted)" font-family="var(--body)">${hm(t)}</text>`;
+  }
   const ticks= settings.units==="mph"? [10,20,30,40].map(v=>v/KN2MPH) : [10,20,30];   // gridlines on round numbers in the unit shown
   ticks.forEach(v=>{ if(v<maxS) svg+=`<line x1="${pad}" x2="${W-pad}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pad-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${wnum(v)}</text>`; });
   svg+=`<text x="${pad-4}" y="12" font-size="9" text-anchor="end" fill="var(--muted)" font-family="var(--body)">${unitName()}</text>`;
-  const winStart=h.findIndex(x=>+f.time[x.i].slice(11,13)===r.from);
-  if(winStart>=0) svg+=`<rect x="${pad+winStart*bw}" y="8" width="${bw*3}" height="${H-36}" fill="var(--accent)" opacity=".12" rx="3"/>`;
-  h.forEach((x,k)=>{ const s=f.spd[x.i]||0,g=f.gst[x.i]||0,d=f.dir[x.i]; const col=`var(--${cls(x.v,x.gate)})`; const cx=pad+k*bw+bw/2;
-    svg+=`<rect x="${pad+k*bw+2}" y="${y(s)}" width="${bw-4}" height="${y(0)-y(s)}" fill="${col}" rx="2"/>`;
-    svg+=`<line x1="${cx}" x2="${cx}" y1="${y(s)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5" opacity=".7"/><line x1="${cx-4}" x2="${cx+4}" y1="${y(g)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5"/>`;
+  const winStart=ci.findIndex(i=>+f.time[i].slice(11,13)===r.from);
+  if(winStart>=0) svg+=`<rect x="${pad+winStart*bw}" y="8" width="${bw*r.window}" height="${BASE-8}" fill="var(--accent)" opacity=".12" rx="3"/>`;
+  ci.forEach((i,k)=>{ const x=scored[i]; const s=f.spd[i]||0,g=f.gst[i]||0,d=f.dir[i]; const col= x? `var(--${cls(x.v,x.gate)})` : "var(--gate)"; const cx=pad+k*bw+bw/2, op= x? "":' opacity=".45"';
+    svg+=`<rect x="${pad+k*bw+2}" y="${y(s)}" width="${bw-4}" height="${y(0)-y(s)}" fill="${col}" rx="2"${op}/>`;
+    svg+=`<line x1="${cx}" x2="${cx}" y1="${y(s)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5" opacity=".7"/><line x1="${cx-4}" x2="${cx+4}" y1="${y(g)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5"${op}/>`;
     if(d!=null) svg+=`<g transform="translate(${cx},${H-18}) rotate(${d+180})"><path d="M0,-6 L4,4 L0,2 L-4,4 Z" fill="var(--muted)"/></g>`;
-    const hr=+f.time[x.i].slice(11,13); if(hr%3===1) svg+=`<text x="${cx}" y="${H-2}" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--mono)">${hhmm(hr)}</text>`;
+    const hr=+f.time[i].slice(11,13); if((hr-h0)%3===0) svg+=`<text x="${cx}" y="${H-2}" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--mono)">${hhmm(hr)}</text>`;
   });
+  if(td){   // a light tide curve in a band under the bars, highs and lows labelled with their time and height; display only (SPEC §7)
+    const yT=BASE+6, yB=BASE+TB-2, vs=td.pts.map(p=>p[1]), vlo=Math.min(...vs), vhi=Math.max(...vs), ty=v=>yB-3-((v-vlo)/((vhi-vlo)||1))*(yB-yT-16);
+    const vis=td.pts.filter(p=>p[0]>=h0-1.5&&p[0]<=h0+ci.length+0.5);
+    if(vis.length>1){
+      const line=vis.map((p,i)=>`${i?"L":"M"}${xc(p[0]).toFixed(1)},${ty(p[1]).toFixed(1)}`).join(" ");
+      svg+=`<path d="${line} L${xc(vis[vis.length-1][0]).toFixed(1)},${yB} L${xc(vis[0][0]).toFixed(1)},${yB} Z" fill="var(--accent)" opacity=".14"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.3" opacity=".7"/>`;
+      for(const [t,v,kind] of td.hilo){ if(t<h0-0.5||t>h0+ci.length-0.5) continue; const x=xc(t), lx=Math.max(pad+50,Math.min(W-pad-50,x));
+        svg+=`<circle cx="${x.toFixed(1)}" cy="${ty(v).toFixed(1)}" r="2.5" fill="var(--accent)"/><text x="${lx.toFixed(1)}" y="${(ty(v)-5).toFixed(1)}" font-size="10" text-anchor="middle" fill="var(--fg)" font-family="var(--body)">${kind==="H"?"High":"Low"} ${hm(t)} · ${v.toFixed(1)} ft</text>`; }
+    }
+  }
   svg+=`</svg>`;
   const plain=(spd,gst,dir)=> spd==null? "–" : `${wn(spd)}${gst!=null&&gst>spd+1?` gusting ${wnum(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
   const kv=[];
@@ -816,7 +857,7 @@ function alertsSheet(){
     <div class="narr" style="font-size:14px">${narrative()}</div>${strip}
     <h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-family:var(--body)">Home-screen widget · native build</h3>
     ${widgetMock()}
-    <p style="color:var(--muted);font-size:13px;margin-top:8px">Quiet hours ${hhmm(A.quietFrom)}–${hhmm(A.quietTo)}. A spot-day you've been told about isn't repeated unless its score moves by 2 or more.</p>`);
+    <p style="color:var(--muted);font-size:13px;margin-top:8px">Quiet hours ${hhmm(A.quietFrom)}–${hhmm(A.quietTo)}. A spot-day you've been told about isn't repeated unless its score moves by 2 or more. The last two forecast days are a trend and never alert.</p>`);
   host.querySelectorAll("[data-a]").forEach(r=>r.oninput=()=>{ A[r.dataset.a]=+r.value; saveSettings(); alertsSheet(); });
   host.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{ const d=+b.dataset.d; A.days=A.days.includes(d)?A.days.filter(x=>x!==d):[...A.days,d].sort(); saveSettings(); alertsSheet(); });
   ["sameDay","confidence","email"].forEach(k=>{ const el=document.getElementById("al-"+k); el.onchange=()=>{ A[k]=el.checked; saveSettings(); alertsSheet(); }; });
@@ -937,13 +978,13 @@ function howSheet(){
             ["wave","Surf",`(coast spots) ${settings.style==="wave"?"1.5–7 ft is the target for wave riding":settings.style==="foil"?"penalized above 3 ft for foil":"penalized above 5 ft for freeride"}.`],
             ["wx","Weather","fog halves it, likely rain trims it, thunderstorms zero it."]];
   const lab=v=> v===0?"Ignored": v<0.75?"Light": v<=1.25?"Normal": v<1.75?"Heavy":"Double";
-  sheet("How it scores", `<div class="how"><p>Every daylight hour (7a–7p) at every spot gets a 0–10 score. The day's score is its best ${settings.comfort.minHours}-hour window, and that window is what the row shows. The slider sets how much a factor <em>counts</em>; the scale under it shows what the factor <em>measures</em> and where each spot sits right now.</p>
+  sheet("How it scores", `<div class="how"><p>Every daylight hour (sunrise to sunset, that day's own) at every spot gets a 0–10 score. The day's score is its best ${settings.comfort.minHours}-hour window, and that window is what the row shows. The slider sets how much a factor <em>counts</em>; the scale under it shows what the factor <em>measures</em> and where each spot sits right now.</p>
   <ul class="check" id="weights">${wl.map(([k,n,d])=>`<li style="display:block"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${n}</b><span class="chip" id="wl-${k}">${lab(W[k])}</span></div><input type="range" min="0" max="2" step="0.25" value="${W[k]}" data-w="${k}" style="width:100%;accent-color:var(--accent)"><div class="ticks"><span>Ignored</span><span>Light</span><span>Normal</span><span>Heavy</span><span>Double</span></div>${scaleSVG(k,rows)}<small style="color:var(--muted)">${d}</small></li>`).join("")}</ul>
   <div class="actions" style="margin:10px 0"><button class="btn" id="resetW">Reset weights</button></div>
   <p><b>Reading the rows:</b> "${wg(18,24)} NW · 2p–5p" means ${wnum(18)} ${unitWord()} average, gusting ${wnum(24)}, wind from the northwest, best between 2 and 5 pm. Open a row for the plain-English version. Units switch under Rider.</p>
   <p>Three hard gates set a score to 0 no matter what: offshore wind, ${wnum(NUKE)}+ ${unitName()} sustained or ${wnum(38)}+ gusts, and thunderstorms.</p>
   <p><b>Which forecast.</b> The wind the score rates is, hour by hour, the median of three models: Open-Meteo's best match, ECMWF and NOAA's NBM. Single models miss by 5–10 ${unitName()==="kn"?"kn":"mph"} at the Gorge and on the coast; the middle one is usually closest and never the hopeful outlier. The three Gorge spots are the exception: they score on NBM alone, because the gap wind through the Gorge is too narrow for the global models to see and NBM (built on the 3 km HRRR and NWS grids) resolves it. <b>Confidence</b> compares five models (those three plus GFS and ICON) over the best window: "Models agree" means they're within ${wn(4)} of each other; the spot detail always shows the spread, and a tile only carries the chip when the spread could move the score by two points or more.</p>
-  <p>Forecasts are Open-Meteo (best match, ECMWF IFS, NBM, GFS, ICON) and its marine model, refreshed every time you open the app. Drive times from Lake Oswego and Pacific City are typical, not live; the Directions button opens Google Maps with current traffic.</p>
+  <p>Forecasts are Open-Meteo (best match, ECMWF IFS, NBM, GFS, ICON) and its marine model, seven days, refreshed every time you open the app; the last two days are a trend. Tides on the coast spots are NOAA predictions for the nearest tide station, drawn under the hourly chart for the eye only: they don't move the score. Drive times from Lake Oswego and Pacific City are typical, not live; the Directions button opens Google Maps with current traffic.</p>
   <p style="font-size:12px;color:var(--muted)">Spot photos via Wikimedia Commons: Bayocean Spit: Tedder (CC BY-SA 4.0); Cape Lookout: Dougtone (CC BY-SA 2.0); Floras Lake: Bastique (CC BY-SA 3.0); Florence South Jetty: Bonnie Moreland from Oregon, United States (Public domain); Fort Stevens / Clatsop Spit: Flickr contributor (CC BY 2.0); Gearhart: Meronim (CC BY-SA 3.0); Hood River Sandbar: Adam Jones, Ph.D. (CC BY-SA 3.0); Manzanita / Nehalem Bay: Bob Heims, U.S. Army Corps of Engineers (Public domain); Newport South Jetty: User:Cacophony (CC BY 2.5); Oceanside: M.O. Stevens (CC BY-SA 3.0); Pacific City: Ennetws (Public domain); Roads End, Lincoln City: Rick Obst (CC BY 4.0); Rockaway Beach: Gary Halvorson, Oregon State Archives (CC BY 4.0); Rufus (Rock Pile): Joe Mabel (CC BY-SA 4.0); Stevenson: LegalTech (CC BY 4.0).</p></div>`);
   host.querySelectorAll("[data-w]").forEach(r=>r.oninput=()=>{ settings.weights[r.dataset.w]=+r.value; document.getElementById("wl-"+r.dataset.w).textContent=lab(+r.value); saveSettings(); render(); });
   document.getElementById("resetW").onclick=()=>{ settings.weights={...DEFAULT_WEIGHTS}; saveSettings(); render(); howSheet(); };
@@ -1530,7 +1571,7 @@ function setRefreshUI(state,msg){
   b.textContent= state==="busy"? "Refreshing…" : "Refresh now";
   const n=document.getElementById("refreshNote"); if(n){ n.textContent=msg||""; n.hidden=!msg; }
 }
-const DAYS=5, TZ="America/Los_Angeles";
+const DAYS=7, TZ="America/Los_Angeles";   // seven forecast days; the last two are shown as a trend
 async function fetchJSON(url, ms=25000){
   const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms);
   try{ const r=await fetch(url,{signal:c.signal}); if(!r.ok) throw new Error(r.status); return await r.json(); } finally{ clearTimeout(t); }
@@ -1538,11 +1579,13 @@ async function fetchJSON(url, ms=25000){
 const rnd=(xs,nd=1)=>xs.map(v=>v==null?null:+v.toFixed(nd));
 // Open-Meteo model ids -> the doc's f.m keys. best match, ECMWF and NBM feed the score (hourly median, consensus(); NBM alone at the Gorge spots); GFS and ICON only vote on confidence.
 const MODEL_IDS={bm:"best_match",ecmwf:"ecmwf_ifs025",nbm:"ncep_nbm_conus",gfs:"gfs_seamless",icon:"icon_seamless"};
+// daily sunrise/sunset -> f.sun = {"YYYY-MM-DD":[riseISO,setISO]} (local time). With several models the API may suffix the daily keys too; any model's copy will do, the sun is the same.
+function sunOf(d){ const D=d&&d.daily; if(!D||!Array.isArray(D.time)) return undefined; const pick=n=>D[n]||D[n+"_best_match"]||D[Object.keys(D).find(k=>k.startsWith(n+"_"))||""]; const R=pick("sunrise"), S=pick("sunset"); if(!R||!S) return undefined; const o={}; D.time.forEach((day,i)=>{ if(R[i]&&S[i]) o[day]=[R[i],S[i]]; }); return Object.keys(o).length? o: undefined; }
 async function fetchForecasts(list){
   // One Open-Meteo call for all spots (multi-location, five models), one marine call for the coast spots. `list` limits it (discovered spots).
   const all=list||allSpots();
   const lat=all.map(s=>s.lat).join(","), lon=all.map(s=>s.lon).join(",");
-  const query=models=>`latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code&models=${models}&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  const query=models=>`latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&daily=sunrise,sunset&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code&models=${models}&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
   let w;
   try{ w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+query(Object.values(MODEL_IDS).join(",")), 40000); }
   catch(e){ if(e&&e.name==="AbortError") throw e; console.warn("five-model forecast call failed, retrying with three",e); w=await fetchJSON("https://api.open-meteo.com/v1/forecast?"+query("best_match,gfs_seamless,icon_seamless"), 40000); }   // a model the API rejects must never take the page down
@@ -1552,7 +1595,7 @@ async function fetchForecasts(list){
   all.forEach((s,i)=>{ const d=arr[i]; if(!d||!d.hourly) return; const h=d.hourly; const col=(n,m="best_match")=>h[`${n}_${m}`]||h[n]||new Array(h.time.length).fill(null); const cur=d.current||{}; const cv=n=>cur[`${n}_best_match`]??cur[n]??null;
     const m={}; for(const [k,id] of Object.entries(MODEL_IDS)){ if(k!=="bm" && !h[`wind_speed_10m_${id}`]) continue; m[k]={spd:rnd(col("wind_speed_10m",id)),gst:rnd(col("wind_gusts_10m",id)),dir:rnd(col("wind_direction_10m",id),0)}; }   // a model the answer lacks is left out, not stored as nulls
     docs[s.id]=consensus({spotId:s.id,fetchedAt:now,time:h.time,spd:rnd(col("wind_speed_10m")),gst:rnd(col("wind_gusts_10m")),dir:rnd(col("wind_direction_10m"),0),temp:rnd(col("temperature_2m"),0),pop:rnd(col("precipitation_probability"),0),code:col("weather_code"),vis:rnd(col("visibility"),0), m,
-      now:{time:cur.time,spd:cv("wind_speed_10m"),gst:cv("wind_gusts_10m"),dir:cv("wind_direction_10m"),temp:cv("temperature_2m"),code:cv("weather_code")}}, s.model); });   // a Gorge spot (model "nbm") scores on NBM, the rest on the median
+      now:{time:cur.time,spd:cv("wind_speed_10m"),gst:cv("wind_gusts_10m"),dir:cv("wind_direction_10m"),temp:cv("temperature_2m"),code:cv("weather_code")}, sun:sunOf(d)}, s.model); });   // a Gorge spot (model "nbm") scores on NBM, the rest on the median; sun = the day's sunrise/sunset, which set the scored hours (daylightIdx)
   const wave=all.filter(s=>s.waves);
   try{
     const mq=`latitude=${wave.map(s=>s.lat).join(",")}&longitude=${wave.map(s=>s.lon).join(",")}&hourly=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
@@ -1561,6 +1604,41 @@ async function fetchForecasts(list){
   }catch(e){ console.warn("marine failed",e); }
   return {docs:Object.values(docs), fetchedAt:now};
 }
+/* ---------- tides (NOAA CO-OPS predictions; display only, SPEC §7) ---------- */
+// Coast spots name their nearest NOAA harmonic tide station (spots.json `tideStation`). Once the scores are on screen the page fetches each
+// station's hourly predictions and its high/low times for the forecast span, once per day (cached in localStorage `goc.tides`), and the spot
+// detail draws a light tide curve under the wind bars. Nothing here touches the score; a station that doesn't answer leaves the chart as it was.
+const TIDE_API="https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
+const TIDE_STATIONS={"9439011":"Hammond","9437540":"Garibaldi","9435380":"South Beach, Newport"};   // names for the chart title; any other id shows as "station <id>"
+let tides={};          // stationId -> {h:[["YYYY-MM-DD HH:MM",ft],…] hourly, hilo:[["YYYY-MM-DD HH:MM",ft,"H"|"L"],…]}, local (lst_ldt) time, feet above MLLW
+let tidesBusy=false;
+function tidesLoad(){ try{ const c=JSON.parse(localStorage.getItem("goc.tides")||"null"); if(c&&c.day===todayKey()&&c.stations&&typeof c.stations==="object") tides=c.stations; }catch(e){} }
+function tidesSave(){ try{ localStorage.setItem("goc.tides",JSON.stringify({day:todayKey(),stations:tides})); }catch(e){} }
+async function fetchTides(){
+  const want=[...new Set(allSpots().map(s=>s.tideStation).filter(Boolean))].filter(id=>!tides[id]);
+  if(!want.length||tidesBusy) return; tidesBusy=true;
+  const begin=todayKey().replace(/-/g,""), range=DAYS*24+24;   // hours from local midnight today, through the last forecast day
+  const q=(id,interval)=>`${TIDE_API}?product=predictions&application=mikestoneapps.github.io_coastal-kiteboarding&begin_date=${begin}&range=${range}&datum=MLLW&station=${id}&time_zone=lst_ldt&units=english&interval=${interval}&format=json`;
+  let got=false;
+  await Promise.all(want.map(async id=>{ try{
+    const [h,hl]=await Promise.all([fetchJSON(q(id,"h"),20000), fetchJSON(q(id,"hilo"),20000)]);
+    const rows=x=>((x&&Array.isArray(x.predictions))? x.predictions:[]).map(p=>[String(p.t||""),+(+p.v).toFixed(1),p.type]).filter(p=>/^\d{4}-\d{2}-\d{2} \d\d:\d\d/.test(p[0])&&!isNaN(p[1]));
+    const H=rows(h); if(!H.length) throw new Error((h&&h.error&&h.error.message)||"no predictions");
+    tides[id]={h:H.map(p=>[p[0],p[1]]), hilo:rows(hl).filter(p=>p[2]==="H"||p[2]==="L")}; got=true;
+  }catch(e){ console.warn("tide predictions unavailable for station "+id, e); } }));
+  tidesBusy=false;
+  if(got){ tidesSave(); if(openSpot) render(); }   // only an open detail draws tides; the list never re-sorts for them
+}
+function tideFor(spot, day){
+  // The station's curve across `day` as decimal hours from that day's local midnight (the neighbouring days' last/first hours included so the curve runs off the chart edges).
+  const T=spot.tideStation&&tides[spot.tideStation]; if(!T||!Array.isArray(T.h)) return null;
+  const d0=Date.parse(day+"T00:00:00Z"); const at=t=>{ const m=String(t).match(/^(\d{4}-\d{2}-\d{2}) (\d\d):(\d\d)/); if(!m) return null; return (Date.parse(m[1]+"T00:00:00Z")-d0)/36e5+ +m[2]+ +m[3]/60; };
+  const pts=T.h.map(p=>[at(p[0]),p[1]]).filter(p=>p[0]!=null&&p[0]>=-2&&p[0]<=26);
+  if(pts.length<4) return null;
+  const hilo=(T.hilo||[]).map(p=>[at(p[0]),p[1],p[2]]).filter(p=>p[0]!=null&&p[0]>=0&&p[0]<24);
+  return {pts, hilo, station:TIDE_STATIONS[spot.tideStation]||("station "+spot.tideStation)};
+}
+
 async function fetchObsFile(){
   // obs.json is written hourly by .github/workflows/observations.yml (NWS stations + NDBC buoys, which have no CORS).
   // Same origin, so it works on GitHub Pages; readings carry their own timestamp and age honestly between runs.
@@ -1588,7 +1666,8 @@ async function refreshAll(manual){
     lastFetchedAt=fetchedAt; ingest(docs,fetchedAt);
     cacheMerge({docs,fetchedAt,obs:obsData});
     setRefreshUI("idle", manual?"Forecast updated.":"");
-    // Station readings never hold up the scores: both sources merge in as they arrive, fresher reading per station wins.
+    // Station readings never hold up the scores: both sources merge in as they arrive, fresher reading per station wins. Tides likewise (display only).
+    fetchTides().catch(e=>console.warn("tides",e));
     fetchObsFile().then(applyObs).catch(e=>console.warn("obs.json unavailable",e));
     fetchStations().then(applyObs).catch(()=>{});
   }catch(e){
@@ -1598,6 +1677,7 @@ async function refreshAll(manual){
   refreshing=false; if(manual) setTimeout(()=>setRefreshUI("idle",""),4000);
 }
 (function boot(){
+  tidesLoad();   // today's tide predictions, if this device already fetched them
   try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"null"); if(c&&c.docs){ obsData=c.obs||{}; ingest(c.docs,c.fetchedAt);} }catch(e){}
   setRefreshUI("idle","");
   document.getElementById("refreshBtn").onclick=()=>refreshAll(true);

@@ -20,7 +20,10 @@
 //
 // Job routes (Authorization: Bearer <ADMIN_TOKEN>; 404 until the ADMIN_TOKEN secret exists):
 //   GET    /v1/admin/riders        -> {riders:[{id, settings, updatedAt, subs, state}]} riders with >=1 subscription
-//   PUT    /v1/admin/riders/<id>   body {subs?, state?}   write back pruned subscriptions / alert state
+//   PUT    /v1/admin/riders/<id>   body {pushed?, subs?, state?}
+//          pushed = [{endpoint, status}] per device from the last send: a 404 or 410 from the push service means the
+//          subscription is gone and it is deleted here (by endpoint, so a device that subscribed meanwhile is kept);
+//          subs (the whole list, older jobs) replaces the stored list; state = the "already alerted" document.
 //
 // KV keys per rider hash h: s:h settings, p:h push subscriptions, a:h alert state ("already alerted"),
 // ph:h:<spotId> the rider's own photo for that spot (binary JPEG; which spots have one is listed in settings.photos).
@@ -33,6 +36,7 @@ const MIN_KEY = 32;
 const MAX_SUBS = 10;           // devices per rider
 const MAX_PHOTO = 100 * 1024;  // bytes per rider photo; the page resizes to 480×320 JPEG (about 40 KB) before uploading
 const SPOT_ID = /^\/v1\/photo\/([a-z0-9][a-z0-9_-]{0,47})$/;
+const GONE_STATUS = new Set([404, 410]);   // the push service says this subscription no longer exists (Web Push RFC 8030): delete it
 
 export default {
   async fetch(request, env) {
@@ -172,9 +176,15 @@ async function admin(request, env, path, cors) {
     const body = await readBody(request);
     if (body === TOO_LARGE) return json({ error: "too large" }, 413, cors);
     if (body === BAD_JSON || !body) return json({ error: "bad json" }, 400, cors);
-    if (Array.isArray(body.subs)) { if (body.subs.length) await env.SETTINGS.put("p:" + id, JSON.stringify(body.subs)); else await env.SETTINGS.delete("p:" + id); }
+    let subs = Array.isArray(body.subs) ? body.subs : null;   // an older job sends the pruned list itself
+    let dropped = 0;
+    if (Array.isArray(body.pushed)) {
+      const gone = new Set(body.pushed.filter(p => p && typeof p.endpoint === "string" && GONE_STATUS.has(+p.status)).map(p => p.endpoint));
+      if (gone.size) { const cur = subs || (await env.SETTINGS.get("p:" + id, "json")) || []; subs = cur.filter(s => !gone.has(s.endpoint)); dropped = cur.length - subs.length; }
+    }
+    if (subs) { if (subs.length) await env.SETTINGS.put("p:" + id, JSON.stringify(subs)); else await env.SETTINGS.delete("p:" + id); }
     if (body.state && typeof body.state === "object") await env.SETTINGS.put("a:" + id, JSON.stringify(body.state));
-    return json({ ok: true }, 200, cors);
+    return json({ ok: true, dropped, count: subs ? subs.length : undefined }, 200, cors);
   }
   return json({ error: "not found" }, 404, cors);
 }

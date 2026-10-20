@@ -10,7 +10,7 @@ const DEFAULT_COMFORT = {minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours
 let settings = { weights: {...DEFAULT_WEIGHTS}, weightLb:185, kites:[7,9,12,14], comfort:{...DEFAULT_COMFORT}, overrides:{} };
 function limitsFor(s, spotId){ return {...DEFAULT_COMFORT, ...((s&&s.comfort)||{}), ...(((s&&s.overrides)||{})[spotId]||{})}; }
 const STYLES = {freeride:{lo:14,peak:20,hi:27,label:"Freeride"}, wave:{lo:14,peak:19,hi:24,label:"Wave"}, foil:{lo:9,peak:13,hi:18,label:"Foil"}};
-const DAY_START=7, DAY_END=19, NUKE=35;
+const DAY_START=7, DAY_END=19, NUKE=35;   // DAY_START..DAY_END: the candidate hours when a doc carries no sunrise/sunset (an older cache); otherwise daylightIdx() uses the day's own
 const KG=0.4536;
 /* ---------- scoring ---------- */
 /* models: Open-Meteo returns several per hour. The score runs on the per-hour median of best match, ECMWF and NBM;
@@ -107,10 +107,23 @@ function hourScore(spot, f, i, style, limits){
   return {v:gate?0:v*10, gate:g&&g.gate, why: worst.why||worst.gate, mine: g? !!g.mine: !!worst.mine};
 }
 function m2ft(m){ return m==null?null:m*3.281; }
+/* daylight: the candidate hours are the day's own sunrise to sunset (Open-Meteo daily=sunrise,sunset, stored on the doc as
+   f.sun[day]=[riseISO,setISO] in the forecast's time zone). An hour counts when its midpoint is in daylight, so 07:33–18:20 gives
+   the 8a..5p slots (the 7a slot's midpoint is before sunrise, the 6p slot's after sunset). A doc without sun data falls back to the fixed 7a–7p. */
+function sunHours(f, day){
+  const s=f.sun&&f.sun[day]; if(!s||!s[0]||!s[1]) return null;
+  const h=t=>{ const m=String(t).match(/T(\d\d):(\d\d)/); return m? +m[1]+(+m[2])/60 : null; };
+  const r=h(s[0]), e=h(s[1]); return r==null||e==null||e<=r? null : [r,e];
+}
+function daylightIdx(f, day){
+  const sun=sunHours(f,day), idx=[];
+  f.time.forEach((t,i)=>{ if(!t.startsWith(day)) return; const h=+t.slice(11,13); if(sun? (h+0.5>=sun[0] && h+0.5<=sun[1]) : (h>=DAY_START&&h<=DAY_END)) idx.push(i); });
+  return idx;
+}
 function dayScore(spot, f, day, style, weights, limits){
   if(weights) settings.weights=weights;
   const L=limits||limitsFor(settings, spot.id);
-  const idx=[]; f.time.forEach((t,i)=>{ if(t.startsWith(day)){ const h=+t.slice(11,13); if(h>=DAY_START&&h<=DAY_END) idx.push(i);} });
+  const idx=daylightIdx(f,day);
   if(!idx.length) return null;
   const hs=idx.map(i=>({i,...hourScore(spot,f,i,style,L)}));
   const N=Math.min(Math.max(Math.round(L.minHours||3),1),6);
@@ -139,4 +152,4 @@ function mins(m){ return m<60? m+" min" : Math.floor(m/60)+"h"+String(m%60).padS
 function cls(s,gate){ return gate?"gate": s>=7?"good": s>=4?"ok":"poor"; }
 function kiteFor(spd){ const kg=settings.weightLb*KG; const ideal=kg*2.175/Math.max(spd,6); const ks=settings.kites.length?settings.kites:[7,9,12,14]; return ks.reduce((a,k)=>Math.abs(k-ideal)<Math.abs(a-ideal)?k:a, ks[0]); }
 
-if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,DEFAULT_COMFORT,MODELS,limitsFor,settings,median,consensus,modelSpread,modelSwing,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};
+if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,DEFAULT_COMFORT,MODELS,DAY_START,DAY_END,limitsFor,settings,median,consensus,modelSpread,modelSwing,sunHours,daylightIdx,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};
