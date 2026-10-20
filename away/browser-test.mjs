@@ -424,7 +424,7 @@ try {
     const labels = (svgC.match(/>(High|Low) \d{1,2}:\d\d[ap] · \d+\.\d ft</g) || []);
     assert(labels.length >= 2 && labels.some(l => /^>High/.test(l)) && labels.some(l => /^>Low/.test(l)), "high and low tide labelled with time and height: " + labels.join(" "));
     const legend = await text(page, "#detail-pacificcity .legend");
-    assert((svgC.match(/fill="url\(#night-pacificcity\)"/g) || []).length === 2 && /<pattern id="night-pacificcity"/.test(svgC) && /\u2600\uFE0E<\/tspan> 7:33a</.test(svgC) && /\u263E<\/tspan> 6:20p</.test(svgC) && /fill="var\(--good\)" fill-opacity="\.14" stroke="var\(--good\)"/.test(svgC) && legend.replace(/\s+/g, " ") === "night · best window", "night hatched before 7:33a and after 6:20p with sun / moon markers and the times on the hour axis, the best window green-outlined, a legend under the chart");
+    assert((svgC.match(/fill="url\(#night-pacificcity\)"/g) || []).length === 2 && /<pattern id="night-pacificcity"/.test(svgC) && /\u2600\uFE0E<\/tspan> 7:33a</.test(svgC) && /\u263E<\/tspan> 6:20p</.test(svgC) && /fill="var\(--good\)" fill-opacity="\.14" rx="3">/.test(svgC) && legend.replace(/\s+/g, " ") === "night · best window", "night hatched before 7:33a and after 6:20p with sun / moon markers and the times on the hour axis, the best window a green tint, a legend under the chart");
     assert(/viewBox="0 0 640 190"/.test(svgC) && (svgC.match(/stroke-dasharray/g) || []).length === 2, "the chart grew a 40 px tide band; sunrise and sunset lines");
     const bars = await page.evaluate(() => [...document.querySelectorAll("#detail-pacificcity svg.strip rect[rx='2']")].length);
     assert(bars === 12, `12 bars: the scored 8a–5p slots plus one shaded hour each side (${bars})`);
