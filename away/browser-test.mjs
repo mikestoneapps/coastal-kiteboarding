@@ -50,6 +50,7 @@ function mock(page, opts = {}) {
       return json({ error: "method not allowed" }, 405);
     }
     if (/\/obs\.json/.test(u)) return json(opts.obs || { obs: {} });   // station readings arrive at their own pace; keep the comparison deterministic (opts.obs: a fixed set)
+    if (/\/bias\.json/.test(u)) return opts.bias ? json(opts.bias) : json({ error: "not found" }, 404);   // per-spot forecast bias (Phase 5); absent unless the case supplies one, as on a repo without the file yet
     if (/\/away-spots\.json/.test(u) && !REAL_FILE) {
       log.push("away-spots.json");
       const f = opts.file || "ok";
@@ -581,6 +582,55 @@ try {
     assert((await page.locator("#awayAgain").count()) === 1 && (await page.locator("#awayHand").count()) === 1, "catalogue fetch fails (offline): clear error with Search again + Add by hand");
     assert(errors.length === 0, "error state: no page errors (" + errors.join(" | ") + ")");
     await ctx.close();
+  }
+  /* ---------- per-spot forecast bias (bias.json) and the "Blowing now" toggle ---------- */
+  {
+    // The fixture forecast is 18g22 W everywhere (25g30 at point 1). Pacific City: +4 kn on the median (applied); Stevenson: −3 on NBM (applied, the Gorge scores on NBM);
+    // Rockaway: +5 but only 20 readings (shown, not applied); Oceanside: +1.5 over 80 readings (shown, under 2 kn); Cape Lookout: an entry for a series it does not score on.
+    const bias = { pacificcity: { median: { kn: 4, n: 61 } }, stevenson: { nbm: { kn: -3, n: 45 }, median: { kn: 9, n: 99 } }, rockaway: { median: { kn: 5, n: 20 } }, oceanside: { median: { kn: 1.5, n: 80 } }, capelookout: { bm: { kn: 6, n: 70 } } };
+    const obs = { fetchedAt: new Date().toISOString(), obs: { pacificcity: [{ id: "AT297", name: "PACCTY-2 Pacific City", kind: "nws", dist_mi: 0.3, time: new Date(Date.now() - 12 * 60000).toISOString(), spd: 18, gst: 22, dir: 300 }] } };
+    const { page, errors, ctx } = await newPage(browser, url, { bias, obs });
+    await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(800);
+    await page.click("#homeBC"); await page.waitForTimeout(300);
+    const wind = async id => (await text(page, `#row-${id} .wind`)).split(" · ")[0];
+    assert((await wind("pacificcity")) === "22g26 kn WNW", `Pacific City's tile shows the corrected wind, 18g22 + 4: ${await wind("pacificcity")}`);
+    assert((await wind("rockaway")) === "18g22 kn WNW" && (await wind("oceanside")) === "18g22 kn WNW" && (await wind("capelookout")) === "18g22 kn WNW", "20 readings, 1.5 kn, or a series the spot does not score on: the wind is as forecast");
+    const open = async id => { await page.click(`button[data-open="${id}"]`); await page.waitForSelector(`#detail-${id} .kv`); return text(page, `#detail-${id}`); };
+    let d = await open("pacificcity");
+    assert(/FORECAST BIAS\s*Pacific City has been running \+4 kn vs forecast \(n=61\)\s*· the score uses 4 kn more than the 3-model median forecast/i.test(d), "the detail says what the station has been reading and that the score uses it");
+    d = await open("rockaway");
+    assert(/Rockaway Beach has been running \+5 kn vs forecast \(n=20\)\s*· fewer than 40 readings, so the score leaves it/.test(d), "20 readings: shown, not applied");
+    d = await open("oceanside");
+    assert(/Oceanside has been running \+1\.5 kn vs forecast \(n=80\)\s*· under 2 kn, so the score leaves it/.test(d), "1.5 kn: shown with its decimal, not applied");
+    d = await open("capelookout");
+    assert(!/forecast bias|has been running/i.test(d), "an entry only for a series the spot does not score on: no row");
+    await page.click("#homeLO"); await page.waitForTimeout(300);
+    assert((await wind("stevenson")) === "15g19 kn W", `Stevenson scores on NBM: 18g22 − 3, not the median's +9: ${await wind("stevenson")}`);
+    d = await open("stevenson");
+    assert(/Stevenson has been running −3 kn vs forecast \(n=45\)\s*· the score uses 3 kn less than the NBM forecast/.test(d), "a negative bias reads as 'less than the NBM forecast'");
+    const cached = await page.evaluate(() => JSON.parse(localStorage.getItem("goc.cache")).bias);
+    assert(cached && cached.pacificcity && cached.pacificcity.median.n === 61, "bias.json is kept in goc.cache for the next cold start");
+    // the Alerts sheet: the toggle, on by default, with what the stations read this minute
+    await page.click("#openAlerts"); await page.waitForSelector("#al-blowing");
+    assert(await page.isChecked("#al-blowing"), "'Tell me when it's already blowing' is on by default");
+    const label = await text(page, 'label[for="al-blowing"]');
+    assert(/two hourly checks in a row/.test(label) && /Reading in your range now: Pacific City 18g22 kn WNW at PACCTY-2 Pacific City\./.test(label), "the toggle explains the rule and lists the station reading in range now: " + label.replace(/\s+/g, " ").slice(0, 160));
+    await page.click("#al-blowing"); await page.waitForTimeout(200);
+    assert((await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).alerts.blowing)) === false && !(await page.isChecked("#al-blowing")), "turning it off is saved in the alert settings (synced like the rest)");
+    assert(errors.length === 0, "bias + blowing: no page errors (" + errors.join(" | ") + ")");
+    await ctx.close();
+  }
+  {
+    // Without bias.json at all (a 404, as on the repo before the first hourly run) and with an empty one: the page is unchanged
+    for (const bias of [null, {}]) {
+      const { page, errors, ctx } = await newPage(browser, url, bias ? { bias } : {});
+      await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(600);
+      await page.click("#homeBC"); await page.waitForTimeout(300);
+      assert((await text(page, "#row-pacificcity .wind")).startsWith("18g22 kn W"), `bias.json ${bias ? "empty" : "missing"}: the wind is as forecast`);
+      await page.click('button[data-open="pacificcity"]'); await page.waitForSelector("#detail-pacificcity .kv");
+      assert(!/forecast bias|has been running/i.test(await text(page, "#detail-pacificcity")) && errors.length === 0, `bias.json ${bias ? "empty" : "missing"}: no bias row, no page errors (` + errors.join(" | ") + ")");
+      await ctx.close();
+    }
   }
 } finally {
   await browser.close(); server.close(); if (base) base.server.close();

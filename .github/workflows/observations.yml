@@ -4,10 +4,13 @@ name: Station observations
 #   observations — fetch the latest NWS and NDBC readings for every spot into obs.json and commit it so
 #                  the page can read buoys (no CORS) same-origin. Then accuracy.py writes one line per spot with a
 #                  fresh reading to accuracy.jsonl: observed knots beside each forecast model's number for that hour
-#                  (90-day window), committed with obs.json. Phase 5 turns it into per-spot, per-model bias.
-#   alerts       — score every spot for every rider who enabled notifications (alerts/run.mjs, scoring.js)
-#                  and send one push digest per rider. Skips itself until the three secrets exist
-#                  (docs/SETUP-SYNC.md, "Push alerts"). Commits nothing.
+#                  (90-day window); obs_recent.py keeps the last few runs' nearest readings in obs-recent.json (for the
+#                  "Blowing now" alert); bias.py turns the log into per-spot, per-model bias in bias.json (Phase 5).
+#                  All four files are committed together.
+#   alerts       — runs after observations (whatever its outcome) on the branch tip, so it sees the files just
+#                  committed: scores every spot for every rider who enabled notifications (alerts/run.mjs, scoring.js)
+#                  and sends one push digest per rider, forecast digest and "Blowing now" alike. Skips itself until the
+#                  three secrets exist (docs/SETUP-SYNC.md, "Push alerts"). Commits nothing.
 # Hourly 05:00–21:00 Pacific on main; cron is UTC, so the window below covers both PDT (12–04 UTC) and
 # PST (13–05 UTC) with one extra run at each edge.
 on:
@@ -40,13 +43,19 @@ jobs:
         # Never fails the job (exits 0 on any error) so a forecast outage can't hold up obs.json.
         run: python3 accuracy.py obs.json accuracy.jsonl
 
-      - name: Commit obs.json and accuracy.jsonl if they changed
+      - name: Keep the last few runs' readings (for "Blowing now")
+        run: python3 obs_recent.py obs.json obs-recent.json
+
+      - name: Compute per-spot forecast bias
+        run: python3 bias.py accuracy.jsonl bias.json
+
+      - name: Commit the data files if they changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add obs.json accuracy.jsonl
+          git add obs.json accuracy.jsonl obs-recent.json bias.json
           if git diff --cached --quiet; then
-            echo "obs.json and accuracy.jsonl unchanged"
+            echo "obs.json, accuracy.jsonl, obs-recent.json and bias.json unchanged"
             exit 0
           fi
           git commit -m "Update station observations"
@@ -58,6 +67,8 @@ jobs:
   alerts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: observations
+    if: ${{ always() }}   # a failed observations run must not silence the forecast digest; "Blowing now" then just has no fresh file
     permissions:
       contents: read
     env:
@@ -66,6 +77,8 @@ jobs:
       VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}   # the branch tip, which carries the obs-recent.json and bias.json the observations job just pushed
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

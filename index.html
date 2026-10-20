@@ -218,7 +218,7 @@ const KG=0.4536;
 const GLYPH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h8a2 2 0 1 1-2 2"/></svg>';  // shown for any spot without a photo (photo:false, or the image fails to load)
 
 const DEFAULT_COMFORT={minWind:12, maxWind:32, maxGust:34, maxSurf:9, minHours:3, stretch:true};
-const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true};
+const DEFAULT_ALERTS={minScore:8, maxDrive:180, days:[0,1,2,3,4,5,6], hour:19, lead:3, cap:1, confidence:true, sameDay:true, quietFrom:21, quietTo:7, email:true, blowing:true};   // blowing: the "Blowing now" station alert (SPEC §8)
 const ALERT_DAYS=5;   // alerts only ever cover the first five forecast days; days 6–7 are a trend (alerts/lib.mjs applies the same cap)
 const TREND_FROM=5;   // lead days 5 and 6 (the 6th and 7th forecast day) are labelled "trend": the models rarely agree that far out
 let settings = {home:"LO", style:"freeride", weightLb:185, kites:[7,9,12,14], radius:90, weights:{...DEFAULT_WEIGHTS}, custom:{name:"Portland (downtown)",lat:45.5202,lon:-122.6742}, check:null, comfort:{...DEFAULT_COMFORT}, overrides:{}, alerts:{...DEFAULT_ALERTS}, sort:"score", kept:[], photos:{}, units:"kn", updatedAt:null, v:2};   // units: "kn" | "mph", display only; every number inside stays in knots
@@ -245,6 +245,25 @@ let showBeyond = false;
    GFS and ICON only vote on confidence. Single models disagree by 5–10 kn at the Gorge and coast spots (SPEC §3). */
 const MODELS=[["bm","Best match"],["ecmwf","ECMWF"],["nbm","NBM"],["gfs","GFS"],["icon","ICON"]];
 function median(xs){ const a=xs.filter(x=>x!=null).sort((x,y)=>x-y); if(!a.length) return null; const m=a.length>>1; return a.length%2? a[m] : (a[m-1]+a[m])/2; }
+/* bias (Phase 5, SPEC §3): bias.json, written hourly by bias.py from accuracy.jsonl, is {spotId: {model: {kn, n}}} with kn = median(observed − forecast)
+   over n station readings. The chosen model is the series the doc scores on (f.basis "nbm" | "median"; an older doc is best match, "bm"). Its bias is added
+   to the hourly speed and gust before scoring only when n >= BIAS_MIN_N and |kn| >= BIAS_MIN_KN; thinner or smaller, the forecast is scored as it came. */
+let biasData={};   // spotId -> {model: {kn, n}}; setBias() loads it (the page from bias.json, the alert job from the checkout)
+const BIAS_MIN_N=40, BIAS_MIN_KN=2;
+function setBias(b){ biasData= b&&typeof b==="object"&&!Array.isArray(b)? b : {}; }
+function biasFor(spot, f){
+  // {key, kn, n, applied} for the spot's chosen model, or null when bias.json has nothing for it.
+  const B=biasData[spot.id]; if(!B) return null;
+  const key=f.basis||"bm", b=B[key]; if(!b||typeof b.kn!=="number"||typeof b.n!=="number") return null;
+  return {key, kn:b.kn, n:b.n, applied: b.n>=BIAS_MIN_N && Math.abs(b.kn)>=BIAS_MIN_KN};
+}
+function applyBias(spot, f){
+  // The doc with the chosen model's bias added to every hour's speed and gust (never below 0, 0.1 kn), tagged f.biased = the knots added.
+  // The same offset goes on the gust so the gust ratio is not distorted. A doc already corrected, or one with no bias to apply, comes back as is.
+  const b=biasFor(spot,f); if(!b||!b.applied||f.biased!=null) return f;
+  const add=v=> v==null? v : Math.max(0, Math.round((v+b.kn)*10)/10);
+  return {...f, biased:b.kn, spd:f.spd.map(add), gst:f.gst.map(add)};
+}
 function consensus(f, model){
   // f.spd / f.gst := per-hour median of f.m.bm, f.m.ecmwf, f.m.nbm (whichever have a value that hour); direction stays best match's.
   // model "nbm" (spots.json `model`, the three Gorge spots): that hour's NBM value instead, the median where NBM has none (SPEC §3).
@@ -405,7 +424,8 @@ function disagreement(spot,f){
 }
 function dayScore(spot, f, day, style){
   const todayLA=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
-  const raw=f;   // the forecast as fetched: the disagreement flag compares the station with this, not with the blended hour
+  f=applyBias(spot,f);   // the spot's forecast bias, when there is enough of it (bias.json)
+  const raw=f;   // the forecast as fetched (bias and all): the disagreement flag compares the station with this, not with the blended hour
   if(day===todayLA) f=blendToday(spot,f);
   const idx=daylightIdx(f,day);
   if(!idx.length) return null;
@@ -513,6 +533,15 @@ function alertDigest(){
   }
   return out;
 }
+function blowingNowText(){
+  // For the Alerts sheet: the spots whose nearest fresh station reads inside the rider's wind range from a working direction right now
+  // (the job's rule, alerts/lib.mjs blowingNow(), wants two hourly readings in a row; the page only has the latest).
+  const A=settings.alerts, hits=[];
+  for(const spot of allSpots()){ const o=stationFor(spot.id); if(!o||!spot.dir||!spot.dir.best) continue; const L=limitsFor(spot.id);
+    const drive=Math.min(spot.driveLO??Infinity, spot.driveBC??Infinity); if(!(drive<=A.maxDrive)) continue;
+    if(o.spd>=L.minWind && o.spd<=L.maxWind && (o.gst==null||o.gst<=L.maxGust) && o.dir!=null && dirScore(o.dir,spot.dir).v>=0.75) hits.push(`${esc(spot.name.split(" /")[0].split(" (")[0])} ${o.gst!=null&&o.gst>o.spd+1? wg(o.spd,o.gst): wn(o.spd)} ${compass(o.dir)} at ${esc(o.name)}`); }
+  return hits.length? `Reading in your range now: ${hits.slice(0,3).join(" · ")}.` : "No station is reading in your range right now.";
+}
 function digestText(dg){
   return dg.hits.slice(0,2).map(h=>`${dayLabel(h.d)[0]} looks great from ${dg.home} — ${h.rows.slice(0,3).map(x=>`${x.spot.name} ${x.r.score.toFixed(1)} (${mins(x.drive)})`).join(", ")}. Window ${hhmm(h.rows[0].r.from)}–${hhmm(h.rows[0].r.to)}.`).join(" ");
 }
@@ -536,7 +565,7 @@ function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 function computeAll(){
   const nd=nextDay();   // rt = the day after the selected day (the second sort button); null on the last forecast day
   const rows=allSpots().map(spot=>{ const f=forecasts[spot.id]; if(!f) return null; const r=dayScore(spot,f,selDay,settings.style); if(!r) return null;
-    const rt= nd? dayScore(spot,f,nd,settings.style):null; return {spot,f,r,rt,drive:driveMins(spot)??999}; }).filter(Boolean);
+    const rt= nd? dayScore(spot,f,nd,settings.style):null; return {spot,f:applyBias(spot,f),r,rt,drive:driveMins(spot)??999}; }).filter(Boolean);   // f as scored: bias-corrected where bias.json says so
   const byScore=(a,b)=> b.r.score-a.r.score || a.drive-b.drive;
   const sort=effSort();
   if(sort==="distance") return rows.sort((a,b)=> a.drive-b.drive || b.r.score-a.r.score);
@@ -611,7 +640,7 @@ function row({spot,r,rt,drive,f}){
     <div id="detail-${spot.id}"${openSpot===spot.id?"":" hidden"}>${openSpot===spot.id?detail({spot,r,drive}):""}</div></div>`;
 }
 function detail({spot,r,f}){
-  f=f||forecasts[spot.id];
+  f=applyBias(spot, f||forecasts[spot.id]);   // the chart and the hour rows show the series the score ran on (bias-corrected where bias.json says so)
   // Chart hours: the scored daylight hours (r.idx) plus one slot each side of the day, so the night shading shows where the day begins and ends.
   // Bars outside the scored hours are drawn grey: the forecast is there, the score never looks at it.
   const di=r.idx, ci=[]; for(let i=Math.max(0,di[0]-1);i<=Math.min(f.time.length-1,di[di.length-1]+1);i++) if(f.time[i].startsWith(selDay)) ci.push(i);
@@ -653,7 +682,7 @@ function detail({spot,r,f}){
   svg+=`</svg>`;
   const plain=(spd,gst,dir)=> spd==null? "–" : `${wn(spd)}${gst!=null&&gst>spd+1?` gusting ${wnum(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
   const kv=[];
-  const raw=forecasts[spot.id];
+  const raw=f;
   const basis= raw.basis || (raw.m&&raw.m.ecmwf&&raw.m.nbm? "median":null);   // which series the doc carries (consensus()); older cached docs carry best match alone
   const src= basis==="nbm"? "NBM": basis==="median"? "3-model median":"model";
   if(isToday(selDay)){
@@ -688,6 +717,9 @@ function detail({spot,r,f}){
   if(r.agree) kv.push(["Confidence",r.agree]);
   if(r.models){ const M=r.models, same=wnum(M.lo)===wnum(M.hi);
     kv.push(["Models",`Models say ${same? wn(M.hi): wrange(M.lo,M.hi)}; the score uses ${basis==="nbm"? "NBM": basis==="median"? "the middle":"best match"}`]); }   // one line; the Confidence row above carries the verdict
+  const bb=biasFor(spot, raw);   // Phase 5: what the nearest station has read against this forecast series (bias.json); applied only at 40+ samples and 2+ kn
+  const bnum=v=>String(Math.round(toUnit(v)*10)/10);   // "4", "1.5", "4.6" (mph): one decimal only when there is one, so "+1.5 kn … under 2 kn" never reads as "+2"
+  if(bb) kv.push(["Forecast bias",`${esc(spot.name.split(" /")[0].split(" (")[0])} has been running ${bb.kn>=0?"+":"−"}${bnum(Math.abs(bb.kn))} ${unitName()} vs forecast (n=${bb.n})<small>${bb.applied? ` · the score uses ${bnum(Math.abs(bb.kn))} ${unitName()} ${bb.kn>=0?"more":"less"} than the ${src} forecast` : bb.n<BIAS_MIN_N? ` · fewer than ${BIAS_MIN_N} readings, so the score leaves it` : ` · under ${wn(BIAS_MIN_KN)}, so the score leaves it`}</small>`]);
   const L=limitsFor(spot.id), ov=settings.overrides[spot.id]||{};
   const hold= r.detail? `<p class="hold"><b>What's holding it back:</b> ${esc(r.detail)}${r.mine?` · <button class="link" data-limits="${spot.id}">adjust your limits</button>`:""}</p>` : (r.score>=7? `<p class="hold"><b>Nothing holding it back.</b> ${r.window}-hour window at ${wn(r.spd)}.</p>`:"");
   const dis= r.dis? `<p class="hold warn"><b>Station disagrees:</b> ${esc(r.dis.o.name)} (${r.dis.o.dist_mi} mi) reads ${wn(r.dis.o.spd)} ${compass(r.dis.o.dir)} while the forecast says ${wn(r.dis.fc)} for this hour. Today's score uses the station.</p>`:"";
@@ -850,6 +882,7 @@ function alertsSheet(){
       <li style="display:block"><div style="display:flex;justify-content:space-between"><b>Deliver at</b><span class="chip" id="al-hour">${hhmm(A.hour)}</span></div><input type="range" min="6" max="21" step="1" value="${A.hour}" data-a="hour" style="width:100%;accent-color:var(--accent)"></li>
       <li><input type="checkbox" id="al-sameDay" ${A.sameDay?"checked":""}><label for="al-sameDay">Also alert me in the morning if today turns good</label></li>
       <li><input type="checkbox" id="al-confidence" ${A.confidence?"checked":""}><label for="al-confidence">Only when the forecast models agree <small>skips the 9s the five models disagree about</small></label></li>
+      <li><input type="checkbox" id="al-blowing" ${A.blowing!==false?"checked":""}><label for="al-blowing">Tell me when it's already blowing <small>a spot's nearest station reads inside your ${wrange(settings.comfort.minWind,settings.comfort.maxWind)} range from a working direction two hourly checks in a row, within the drive above. ${blowingNowText()}</small></label></li>
       <li style="display:block"><div style="display:flex;justify-content:space-between"><b>At most</b><span class="chip" id="al-cap">${A.cap} a day</span></div><input type="range" min="1" max="3" step="1" value="${A.cap}" data-a="cap" style="width:100%;accent-color:var(--accent)"></li>
       <li><input type="checkbox" id="al-email" ${A.email?"checked":""}><label for="al-email">Sunday 6pm weekly outlook by email</label></li>
     </ul>
@@ -860,7 +893,7 @@ function alertsSheet(){
     <p style="color:var(--muted);font-size:13px;margin-top:8px">Quiet hours ${hhmm(A.quietFrom)}–${hhmm(A.quietTo)}. A spot-day you've been told about isn't repeated unless its score moves by 2 or more. The last two forecast days are a trend and never alert.</p>`);
   host.querySelectorAll("[data-a]").forEach(r=>r.oninput=()=>{ A[r.dataset.a]=+r.value; saveSettings(); alertsSheet(); });
   host.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{ const d=+b.dataset.d; A.days=A.days.includes(d)?A.days.filter(x=>x!==d):[...A.days,d].sort(); saveSettings(); alertsSheet(); });
-  ["sameDay","confidence","email"].forEach(k=>{ const el=document.getElementById("al-"+k); el.onchange=()=>{ A[k]=el.checked; saveSettings(); alertsSheet(); }; });
+  ["sameDay","confidence","email","blowing"].forEach(k=>{ const el=document.getElementById("al-"+k); el.onchange=()=>{ A[k]=el.checked; saveSettings(); alertsSheet(); }; });
   pushRender();
 }
 
@@ -1639,6 +1672,13 @@ function tideFor(spot, day){
   return {pts, hilo, station:TIDE_STATIONS[spot.tideStation]||("station "+spot.tideStation)};
 }
 
+async function fetchBiasFile(){
+  // bias.json is written hourly by .github/workflows/observations.yml (bias.py over accuracy.jsonl): {spotId: {model: {kn, n}}}.
+  // Same origin; missing or empty it changes nothing (applyBias needs 40+ readings and 2+ kn before it touches a score).
+  const d=await fetchJSON("bias.json?t="+Math.floor(Date.now()/300000), 15000);
+  return d&&typeof d==="object"&&!Array.isArray(d)? d : {};
+}
+function applyBiasFile(b){ setBias(b); render(); cacheMerge({bias:biasData}); }
 async function fetchObsFile(){
   // obs.json is written hourly by .github/workflows/observations.yml (NWS stations + NDBC buoys, which have no CORS).
   // Same origin, so it works on GitHub Pages; readings carry their own timestamp and age honestly between runs.
@@ -1669,6 +1709,7 @@ async function refreshAll(manual){
     // Station readings never hold up the scores: both sources merge in as they arrive, fresher reading per station wins. Tides likewise (display only).
     fetchTides().catch(e=>console.warn("tides",e));
     fetchObsFile().then(applyObs).catch(e=>console.warn("obs.json unavailable",e));
+    fetchBiasFile().then(applyBiasFile).catch(e=>console.warn("bias.json unavailable",e));
     fetchStations().then(applyObs).catch(()=>{});
   }catch(e){
     console.warn(e); setRefreshUI("idle", Object.keys(forecasts).length? "Couldn't reach the forecast service; showing the last one." : "Couldn't reach the forecast service. Check your connection and tap Refresh.");
@@ -1678,7 +1719,7 @@ async function refreshAll(manual){
 }
 (function boot(){
   tidesLoad();   // today's tide predictions, if this device already fetched them
-  try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"null"); if(c&&c.docs){ obsData=c.obs||{}; ingest(c.docs,c.fetchedAt);} }catch(e){}
+  try{ const c=JSON.parse(localStorage.getItem("goc.cache")||"null"); if(c&&c.docs){ obsData=c.obs||{}; setBias(c.bias); ingest(c.docs,c.fetchedAt);} }catch(e){}
   setRefreshUI("idle","");
   document.getElementById("refreshBtn").onclick=()=>refreshAll(true);
   if(syncOn()) syncPull();   // settings sync never holds up the forecast
