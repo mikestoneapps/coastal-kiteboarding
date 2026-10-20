@@ -4,7 +4,7 @@ import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { scoring, SPOTS, evaluate, DEFAULT_ALERTS, inQuiet, laNow, fetchForecasts, MODEL_IDS, DAYS, ALERT_DAYS, deliver, GONE, sunOf } from "./lib.mjs";
+import { scoring, SPOTS, evaluate, DEFAULT_ALERTS, inQuiet, laNow, fetchForecasts, MODEL_IDS, DAYS, ALERT_DAYS, deliver, GONE, sunOf, blowingNow, blowingText, laHour, windText, BLOW_RUNS, OBS_MAX_AGE } from "./lib.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let fails = 0;
 const assert = (c, m) => { if (!c) { fails++; console.error("FAIL:", m); } else console.log("ok  ", m); };
@@ -39,7 +39,7 @@ const rawDoc = () => doc((d, h) => ({ spd: 12 + (h % 5), gst: 16 + (h % 5), ecmw
     settings: { weights, comfort, overrides }, compass: d => "W", mode: null, m2ft: null, wn: v => Math.round(v) + " kn", wnum: v => String(Math.round(v)), wrange: (a, b) => `${a}–${b} kn` };   // the page's unit formatters live outside the block
   sandbox.limitsFor = id => ({ ...comfort, ...(overrides[id] || {}) });
   vm.createContext(sandbox);
-  vm.runInContext(block + "\nthis.pageDayScore=dayScore; this.pageConsensus=consensus; this.pageModelSpread=modelSpread; this.pageDaylightIdx=daylightIdx; this.pageSunHours=sunHours;", sandbox);
+  vm.runInContext(block + "\nthis.pageDayScore=dayScore; this.pageConsensus=consensus; this.pageModelSpread=modelSpread; this.pageDaylightIdx=daylightIdx; this.pageSunHours=sunHours; this.pageSetBias=setBias; this.pageBiasFor=biasFor; this.pageApplyBias=applyBias; this.pageBIAS=[BIAS_MIN_N,BIAS_MIN_KN];", sandbox);
   let n = 0, same = 0;
   const sameModels = (a, b) => (a == null && b == null) || (a && b && near(a.lo, b.lo) && near(a.hi, b.hi) && a.loLabel === b.loLabel && a.hiLabel === b.hiLabel && a.n === b.n && near(a.swing, b.swing));
   for (const spot of SPOTS) for (const style of ["freeride", "wave", "foil"]) for (const f of [doc(great), doc(varied), doc(varied, false), scoring.consensus(rawDoc()), scoring.consensus(rawDoc(), spot.model)]) for (const d of DAYSK) {
@@ -122,6 +122,40 @@ const rawDoc = () => doc((d, h) => ({ spd: 12 + (h % 5), gst: 16 + (h % 5), ecmw
     assert(n2 === 2 && F3[SPOTS[0].id].spd[12] === 10 && Object.keys(F3[SPOTS[0].id].m).join() === "bm,gfs,icon", "a rejected five-model call falls back to three; the doc is then best match alone, with no empty model slots");
     assert(F3[SPOTS[0].id].sun === undefined && scoring.daylightIdx(F3[SPOTS[0].id], DAYSK[0]).length === 13, "an answer without daily data: no f.sun, the fixed 7a–7p hours");
   }
+
+  /* ---------- per-spot forecast bias (Phase 5): page and scoring.js apply the same correction ---------- */
+  {
+    assert(sandbox.pageBIAS[0] === scoring.BIAS_MIN_N && sandbox.pageBIAS[1] === scoring.BIAS_MIN_KN && scoring.BIAS_MIN_N === 40 && scoring.BIAS_MIN_KN === 2, "both sides apply a bias only at 40+ samples and 2+ kn");
+    // stevenson (model nbm): +4 on best match, −3 on the median, +2.5 on NBM (n exactly 40); manzanita: thin on bm (39), small on the median (1.9); rufus: −6 on NBM
+    const BIAS = { stevenson: { bm: { kn: 4, n: 61 }, median: { kn: -3, n: 50 }, nbm: { kn: 2.5, n: 40 } }, manzanita: { bm: { kn: 5, n: 39 }, median: { kn: 1.9, n: 100 } }, rufus: { nbm: { kn: -6, n: 45 }, median: { kn: 6, n: 45 } } };
+    scoring.setBias(BIAS); sandbox.pageSetBias(BIAS);
+    const st = SPOTS.find(s => s.id === "stevenson"), mz = SPOTS.find(s => s.id === "manzanita"), ru = SPOTS.find(s => s.id === "rufus");
+    let n = 0, same = 0;
+    for (const spot of SPOTS) for (const style of ["freeride", "wave", "foil"]) for (const f of [doc(great), doc(varied), scoring.consensus(rawDoc()), scoring.consensus(rawDoc(), spot.model)]) for (const d of DAYSK) {
+      const p = sandbox.pageDayScore(spot, f, d, style), s = scoring.dayScore(spot, f, d, style, weights, scoring.limitsFor({ comfort, overrides }, spot.id));
+      n++; const ok = p && s && near(p.score, s.score) && p.from === s.from && p.reason === s.reason && near(p.spd, s.spd) && near(p.gst, s.gst) && sameModels(p.models, s.models);
+      if (ok) same++; else if (same === n - 1) console.error("first bias mismatch:", spot.id, style, d, f.basis, p && { score: p.score, spd: p.spd }, s && { score: s.score, spd: s.spd });
+    }
+    assert(same === n && n > 0, `with bias.json loaded, scoring.js matches the page on ${n} cases`);
+    const g = doc(great), gb = scoring.applyBias(st, g), pgb = sandbox.pageApplyBias(st, g);
+    assert(gb !== g && gb.biased === 4 && gb.spd[12] === 24 && gb.gst[12] === 28 && g.spd[12] === 20 && JSON.stringify(pgb.spd) === JSON.stringify(gb.spd) && JSON.stringify(pgb.gst) === JSON.stringify(gb.gst), "a doc without a basis is best match: +4 kn on every hour's speed and gust, tagged f.biased; the page builds the same series");
+    assert(scoring.applyBias(st, gb) === gb, "an already corrected doc is not corrected again");
+    const r0 = scoring.dayScore(st, g, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS);
+    assert(near(r0.spd, 24) && near(r0.gst, 28) && r0.score !== scoring.dayScore(mz, g, DAYSK[0], "freeride", scoring.DEFAULT_WEIGHTS).score, "dayScore scores the corrected hours (window mean 24 kn) and the window's wind reads corrected too");
+    const med = scoring.consensus(rawDoc()), nb = scoring.consensus(rawDoc(), "nbm");
+    assert(scoring.biasFor(st, med).key === "median" && scoring.applyBias(st, med).biased === -3 && scoring.applyBias(st, med).spd[1] === 13 && med.spd[1] === 16, "the chosen model is the series the doc scores on: a median doc takes the median's −3");
+    assert(scoring.biasFor(st, nb).key === "nbm" && scoring.applyBias(st, nb).biased === 2.5 && scoring.applyBias(st, nb).spd[9] === 17.5 && nb.spd[9] === 15, "an NBM doc takes NBM's +2.5 (n = 40 counts)");
+    assert(JSON.stringify(scoring.biasFor(mz, g)) === JSON.stringify({ key: "bm", kn: 5, n: 39, applied: false }) && scoring.applyBias(mz, g) === g, "39 samples: reported, not applied");
+    assert(JSON.stringify(scoring.biasFor(mz, med)) === JSON.stringify({ key: "median", kn: 1.9, n: 100, applied: false }) && scoring.applyBias(mz, med) === med && JSON.stringify(sandbox.pageBiasFor(mz, med)) === JSON.stringify(scoring.biasFor(mz, med)), "1.9 kn: reported, not applied; the page says the same");
+    assert(scoring.biasFor(SPOTS.find(s => s.id === "rockaway"), g) === null && sandbox.pageBiasFor(SPOTS[3], g) === null && scoring.biasFor(st, { ...g, basis: "nope" }) === null, "no entry for the spot or the series: null");
+    const light = scoring.consensus(doc(() => ({ spd: 3, gst: 4 })), "nbm");
+    assert(scoring.applyBias(ru, light).spd[12] === 0 && scoring.applyBias(ru, light).gst[12] === 0 && scoring.applyBias(ru, light).dir[12] === light.dir[12], "a negative bias never takes the wind below 0; direction is untouched");
+    scoring.setBias(null); assert(scoring.applyBias(st, g) === g, "setBias(null) clears it");
+    scoring.setBias([1]); assert(scoring.applyBias(st, g) === g, "a non-object bias file is ignored");
+    scoring.setBias({ stevenson: { bm: { kn: "4", n: 61 } } }); assert(scoring.biasFor(st, g) === null, "a malformed entry (kn not a number) is ignored");
+    scoring.setBias({}); sandbox.pageSetBias({});
+    assert(/blowing:true\}/.test(html.match(/const DEFAULT_ALERTS=\{[^\n]*\n/)[0]) && DEFAULT_ALERTS.blowing === true && /id="al-blowing"/.test(html) && /fetchBiasFile\(\)\.then\(applyBiasFile\)/.test(html) && /setBias\(c\.bias\)/.test(html), "the page: Blowing now defaults on with a checkbox in the Alerts sheet, bias.json is fetched in the background and restored from the cache");
+  }
 }
 
 /* ---------- 2. decision rules ---------- */
@@ -196,6 +230,89 @@ const rawDoc = () => doc((d, h) => ({ spd: 12 + (h % 5), gst: 16 + (h % 5), ecmw
   const Fk = { ...Fdead, "k-test": doc(great) };
   r2 = evaluate(rider({ sameDay: false }, {}, { kept: [kept] }), Fk, sat);
   assert(r2.notification && /Test Beach 10\.0 \(20 min\)/.test(r2.notification.body), "a kept spot alerts with its own drive time: " + r2.notification.body);
+
+
+  /* ---------- "Blowing now": the station has read inside the band on the last two hourly runs ---------- */
+  {
+    // Saturday 2026-10-17, runs at :07 past each hour; Pacific = UTC−7 (PDT). 14:10 PDT = 21:10Z.
+    const Z = (h, m = 7) => `2026-10-17T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+00:00`;
+    const ms = iso => Date.parse(iso);
+    const TMK = { id: "TMKO3", name: "TILLAMOOK", kind: "nws", dist_mi: 12.9 };
+    const rd = (hUTC, spd = 18, gst = 22, dir = 315, extra = {}) => ({ ...TMK, time: Z(hUTC, 55), spd, gst, dir, ...extra });   // a reading at :55 from the NW, seen by the :07 run of the next hour
+    const run = (hUTC, obs) => ({ at: Z(hUTC), obs });
+    const recent = (...runs) => ({ runs });
+    const two = recent(run(20, { rockaway: rd(19) }), run(21, { rockaway: rd(20) }));   // 12:55 and 13:55 PDT readings, both 18g22 NW
+    const at14 = { date: "2026-10-17", hour: 14, dow: 6, ms: ms(Z(21, 10)) };
+    const dead = {}, nosun = {}; SPOTS.forEach(s => { dead[s.id] = doc(() => ({ spd: 5 })); nosun[s.id] = doc(() => ({ spd: 5 }), false); });   // the forecast says nothing; only the station does (nosun: an older doc without sunrise/sunset)
+    const limitsOf = () => scoring.DEFAULT_COMFORT;
+
+    let b = blowingNow(SPOTS, two, at14, DEFAULT_ALERTS, limitsOf, dead);
+    assert(b.length === 1 && b[0].spot.id === "rockaway" && b[0].o.spd === 18 && b[0].drive === 50 && b[0].home === "Pacific City", "two runs in the band from the NW: Rockaway, 50 min from the nearer house");
+    assert(blowingText(b) === "Blowing now: Rockaway Beach 18g22 kn NW at the TILLAMOOK station — 50 min from Pacific City.", "the message: " + blowingText(b));
+    assert(windText(18, 22, "mph") === "21g25 mph" && windText(18, 18.5) === "18 kn" && windText(18, null) === "18 kn" && near(laHour("2026-10-17T21:10:00Z"), 14 + 10 / 60), "windText in the rider's unit, gust only when it matters; laHour in Pacific time");
+
+    let r = evaluate(rider({}, {}), dead, at14, two);
+    assert(r.notification && r.notification.body === blowingText(b) && r.notification.url === "./#day=2026-10-17" && r.state.sent["2026-10-17"] === 1, "fires at 14:00 with nothing in the forecast, deep-linked to today, counting against the daily cap: " + r.notification.body);
+    assert(r.state.blowing.rockaway && r.state.blowing.rockaway.spd === 18 && r.state.blowing.rockaway.station === "TMKO3", "recorded as said");
+    const three = recent(...two.runs, run(22, { rockaway: rd(21) }));
+    const at15 = { ...at14, hour: 15, ms: ms(Z(22, 10)) };
+    let r2 = evaluate(rider({ cap: 3 }, r.state), dead, at15, three);
+    assert(!r2.notification && r2.why === "already said it's blowing" && r2.state.blowing.rockaway, "still blowing an hour later: not repeated (cap 3, so it is the suppression, not the cap)");
+    r2 = evaluate(rider({}, r.state), dead, at15, three);
+    assert(!r2.notification && r2.why === "daily cap reached", "with the default cap of 1 the day's one digest has gone");
+    const died = recent(...two.runs, run(22, { rockaway: rd(21, 6, 8) }));
+    r2 = evaluate(rider({ cap: 3 }, r.state), dead, at15, died);
+    assert(!r2.notification && !r2.state.blowing.rockaway && r2.why === "nothing new", "it stops: nothing sent, and the spot leaves the 'said' list");
+    const again = recent(run(22, { rockaway: rd(21, 6, 8) }), run(23, { rockaway: rd(22) }), run(0, { rockaway: rd(23) }));   // dies, then two runs back in the band (15:55, 16:55 PDT)
+    r2 = evaluate(rider({ cap: 3 }, r2.state), dead, { ...at14, hour: 17, ms: ms(Z(0, 10)) + 864e5 * 0 }, { runs: again.runs.map((x, i) => i === 2 ? { ...x, at: "2026-10-18T00:07:00+00:00" } : x) });
+    assert(r2.notification && /^Blowing now: Rockaway Beach/.test(r2.notification.body), "blows again later the same day: said again (under the cap)");
+    r2 = evaluate(rider({ cap: 3 }, { blowing: { rockaway: { spd: 18, station: "TMKO3", at: "2026-10-16T21:00:00.000Z" } } }), dead, at14, two);
+    assert(r2.notification && /^Blowing now/.test(r2.notification.body), "a 'said' entry from yesterday has expired");
+
+    // same digest as the forecast: 08:10 with same-day on, a great forecast and the station already reading in the band
+    const at8 = { date: "2026-10-17", hour: 8, dow: 6, ms: ms(Z(15, 10)) };
+    const morning = recent(run(14, { rockaway: rd(13) }), run(15, { rockaway: rd(14) }));   // 06:55 (dark) and 07:55 PDT readings
+    r2 = evaluate(rider({}), F, at8, morning);
+    assert(r2.notification && /^Today looks great from Lake Oswego/.test(r2.notification.body) && /Blowing now: Rockaway Beach 18g22 kn NW at the TILLAMOOK station — 50 min from Pacific City\.$/.test(r2.notification.body) && r2.state.sent["2026-10-17"] === 1, "one notification carries the forecast digest and the station's word: " + r2.notification.body);
+    const dawn = recent(run(13, { rockaway: rd(12) }), run(14, { rockaway: rd(13) }));   // 05:55 and 06:55 PDT: the latest is before the 07:33 sunrise
+    assert(blowingNow(SPOTS, dawn, { ...at8, hour: 7, ms: ms(Z(14, 10)) }, DEFAULT_ALERTS, limitsOf, F).length === 0 && blowingNow(SPOTS, dawn, { ...at8, hour: 7, ms: ms(Z(14, 10)) }, DEFAULT_ALERTS, limitsOf, nosun).length === 1, "a reading before sunrise does not count (when the forecast carries the sun; without sun data the hour is not checked)");
+
+    // no-fire cases
+    const none = (rec, why, now = at14, A = DEFAULT_ALERTS, L = limitsOf, F_ = dead) => assert(blowingNow(SPOTS, rec, now, A, L, F_).length === 0, "no fire: " + why);
+    none(recent(run(20, { rockaway: rd(19, 8, 10) }), run(21, { rockaway: rd(20) })), "only the latest run in the band (the previous read 8 kn)");
+    none(recent(run(20, { rockaway: rd(19) }), run(21, { rockaway: rd(20, 8, 10) })), "only the previous run in the band");
+    none(recent(run(20, {}), run(21, { rockaway: rd(20) })), "no reading for the spot on the previous run");
+    none(recent(run(20, { rockaway: rd(19) }), run(21, { rockaway: rd(19) })), "the same reading seen by two runs (the station has not updated)");
+    none(recent(run(20, { rockaway: rd(19, 18, 22, 90) }), run(21, { rockaway: rd(20, 18, 22, 90) })), "offshore (E)");
+    none(recent(run(20, { rockaway: rd(19, 18, 22, 160) }), run(21, { rockaway: rd(20, 18, 22, 160) })), "cross-off (SSE), not a working sector");
+    none(recent(run(20, { rockaway: rd(19, 18, 22, null) }), run(21, { rockaway: rd(20, 18, 22, null) })), "no direction");
+    none(recent(run(20, { rockaway: rd(19, 11, 13) }), run(21, { rockaway: rd(20, 11, 13) })), "11 kn: under the 12 kn comfort minimum");
+    none(recent(run(20, { rockaway: rd(19, 33, 36) }), run(21, { rockaway: rd(20, 33, 36) })), "33 kn: over the 32 kn comfort maximum");
+    none(recent(run(20, { rockaway: rd(19, 20, 35) }), run(21, { rockaway: rd(20, 20, 35) })), "gusting 35: over the 34 kn gust limit");
+    none(two, "the rider's own range (per-spot override: Rockaway max 16)", at14, DEFAULT_ALERTS, id => scoring.limitsFor({ overrides: { rockaway: { maxWind: 16 } } }, id));
+    none(two, "nothing within 30 min of either house", at14, { ...DEFAULT_ALERTS, maxDrive: 30 });
+    none(two, "obs-recent.json is stale: the latest run is 2 h old", { ...at14, hour: 16, ms: ms(Z(23, 10)) });
+    none(recent(run(20, { rockaway: rd(17) }), run(21, { rockaway: rd(18) })), "the latest reading is over 2 h old (the runs are fresh, the station went quiet)");
+    none(recent(run(17, { rockaway: rd(16) }), run(21, { rockaway: rd(20) })), "runs four hours apart are not consecutive hourly runs");
+    none(recent(run(21, { rockaway: rd(20) })), "a single run");
+    none({ runs: [] }, "an empty file"); none(null, "no file"); none({ runs: "x" }, "garbage");
+    assert(BLOW_RUNS === 2, "two consecutive runs");
+    r2 = evaluate(rider({ blowing: false }), dead, at14, two);
+    assert(!r2.notification && r2.why === "nothing new" && r2.blowing.length === 0, "the toggle off: never evaluated");
+    r2 = evaluate(rider({ days: [1, 2, 3, 4, 5] }), dead, at14, two);
+    assert(!r2.notification && r2.blowing.length === 0, "not on a day he can't go (Saturday excluded)");
+    r2 = evaluate(rider({ quietFrom: 13, quietTo: 15 }), dead, at14, two);
+    assert(!r2.notification && r2.why === "quiet hours" && r2.blowing.length === 1 && !r2.state.blowing.rockaway, "quiet hours hold it (and it is not marked said, so it goes out when they end)");
+    r2 = evaluate(rider({}, { sent: { "2026-10-17": 1 } }), dead, at14, two);
+    assert(!r2.notification && r2.why === "daily cap reached", "the daily cap holds it");
+    r2 = evaluate(rider({}, {}, { units: "mph" }), dead, at14, two);
+    assert(r2.notification && /Rockaway Beach 21g25 mph NW/.test(r2.notification.body), "the rider's display unit: " + r2.notification.body);
+    // several spots: nearest drive first, three at most, one notification
+    const many = recent(run(20, { rockaway: rd(19), pacificcity: { id: "AT297", name: "PACCTY-2 Pacific City", dist_mi: 0.3, time: Z(19, 55), spd: 16, gst: 17, dir: 290 }, newport: { id: "KONP", name: "Newport, Newport Municipal Airport", dist_mi: 2.1, time: Z(19, 55), spd: 20, gst: 26, dir: 320 }, floras: { id: "46015", name: "Port Orford buoy", dist_mi: 19.3, time: Z(19, 55), spd: 22, gst: 25, dir: 350 } }),
+                        run(21, { rockaway: rd(20), pacificcity: { id: "AT297", name: "PACCTY-2 Pacific City", dist_mi: 0.3, time: Z(20, 55), spd: 15, gst: 16, dir: 300 }, newport: { id: "KONP", name: "Newport, Newport Municipal Airport", dist_mi: 2.1, time: Z(20, 55), spd: 21, gst: 27, dir: 320 }, floras: { id: "46015", name: "Port Orford buoy", dist_mi: 19.3, time: Z(20, 55), spd: 22, gst: 25, dir: 350 } }));
+    r2 = evaluate(rider({ maxDrive: 300 }), dead, at14, many);
+    assert(r2.notification && r2.notification.body === "Blowing now: Pacific City 15 kn WNW at the PACCTY-2 Pacific City station — 5 min from Pacific City; Rockaway Beach 18g22 kn NW at the TILLAMOOK station — 50 min from Pacific City; Newport South Jetty 21g27 kn NW at the Newport, Newport Municipal Airport station — 1h10 from Pacific City." && Object.keys(r2.state.blowing).length === 4, "four spots blowing: one line, nearest first, three named, all four marked said: " + r2.notification.body);
+  }
 
   assert(inQuiet(22, 21, 7) && inQuiet(3, 21, 7) && !inQuiet(8, 21, 7) && inQuiet(13, 12, 14) && !inQuiet(15, 12, 14), "quiet-hours window wraps midnight");
   const n = laNow(new Date("2026-10-17T02:30:00Z"));

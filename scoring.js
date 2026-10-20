@@ -17,6 +17,25 @@ const KG=0.4536;
    GFS and ICON only vote on confidence. Single models disagree by 5–10 kn at the Gorge and coast spots (SPEC §3). */
 const MODELS=[["bm","Best match"],["ecmwf","ECMWF"],["nbm","NBM"],["gfs","GFS"],["icon","ICON"]];
 function median(xs){ const a=xs.filter(x=>x!=null).sort((x,y)=>x-y); if(!a.length) return null; const m=a.length>>1; return a.length%2? a[m] : (a[m-1]+a[m])/2; }
+/* bias (Phase 5, SPEC §3): bias.json, written hourly by bias.py from accuracy.jsonl, is {spotId: {model: {kn, n}}} with kn = median(observed − forecast)
+   over n station readings. The chosen model is the series the doc scores on (f.basis "nbm" | "median"; an older doc is best match, "bm"). Its bias is added
+   to the hourly speed and gust before scoring only when n >= BIAS_MIN_N and |kn| >= BIAS_MIN_KN; thinner or smaller, the forecast is scored as it came. */
+let biasData={};   // spotId -> {model: {kn, n}}; setBias() loads it (the page from bias.json, the alert job from the checkout)
+const BIAS_MIN_N=40, BIAS_MIN_KN=2;
+function setBias(b){ biasData= b&&typeof b==="object"&&!Array.isArray(b)? b : {}; }
+function biasFor(spot, f){
+  // {key, kn, n, applied} for the spot's chosen model, or null when bias.json has nothing for it.
+  const B=biasData[spot.id]; if(!B) return null;
+  const key=f.basis||"bm", b=B[key]; if(!b||typeof b.kn!=="number"||typeof b.n!=="number") return null;
+  return {key, kn:b.kn, n:b.n, applied: b.n>=BIAS_MIN_N && Math.abs(b.kn)>=BIAS_MIN_KN};
+}
+function applyBias(spot, f){
+  // The doc with the chosen model's bias added to every hour's speed and gust (never below 0, 0.1 kn), tagged f.biased = the knots added.
+  // The same offset goes on the gust so the gust ratio is not distorted. A doc already corrected, or one with no bias to apply, comes back as is.
+  const b=biasFor(spot,f); if(!b||!b.applied||f.biased!=null) return f;
+  const add=v=> v==null? v : Math.max(0, Math.round((v+b.kn)*10)/10);
+  return {...f, biased:b.kn, spd:f.spd.map(add), gst:f.gst.map(add)};
+}
 function consensus(f, model){
   // f.spd / f.gst := per-hour median of f.m.bm, f.m.ecmwf, f.m.nbm (whichever have a value that hour); direction stays best match's.
   // model "nbm" (spots.json `model`, the three Gorge spots): that hour's NBM value instead, the median where NBM has none (SPEC §3).
@@ -123,6 +142,7 @@ function daylightIdx(f, day){
 function dayScore(spot, f, day, style, weights, limits){
   if(weights) settings.weights=weights;
   const L=limits||limitsFor(settings, spot.id);
+  f=applyBias(spot,f);   // the spot's forecast bias, when there is enough of it (bias.json)
   const idx=daylightIdx(f,day);
   if(!idx.length) return null;
   const hs=idx.map(i=>({i,...hourScore(spot,f,i,style,L)}));
@@ -152,4 +172,4 @@ function mins(m){ return m<60? m+" min" : Math.floor(m/60)+"h"+String(m%60).padS
 function cls(s,gate){ return gate?"gate": s>=7?"good": s>=4?"ok":"poor"; }
 function kiteFor(spd){ const kg=settings.weightLb*KG; const ideal=kg*2.175/Math.max(spd,6); const ks=settings.kites.length?settings.kites:[7,9,12,14]; return ks.reduce((a,k)=>Math.abs(k-ideal)<Math.abs(a-ideal)?k:a, ks[0]); }
 
-if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,DEFAULT_COMFORT,MODELS,DAY_START,DAY_END,limitsFor,settings,median,consensus,modelSpread,modelSwing,sunHours,daylightIdx,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};
+if(typeof module!=="undefined") module.exports={STYLES,DEFAULT_WEIGHTS,DEFAULT_COMFORT,MODELS,DAY_START,DAY_END,BIAS_MIN_N,BIAS_MIN_KN,limitsFor,settings,median,consensus,setBias,biasFor,applyBias,modelSpread,modelSwing,sunHours,daylightIdx,hourScore,dayScore,speedScore,dirScore,gustScore,waveScore,wxScore,compass,hhmm,kiteFor};

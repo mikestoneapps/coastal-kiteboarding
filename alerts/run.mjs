@@ -5,7 +5,15 @@
 // Env: SYNC_URL (the Worker), SYNC_ADMIN_TOKEN (its ADMIN_TOKEN secret), VAPID_PRIVATE_KEY. The public
 // key is read from the Worker's /v1/push/vapid. Missing any of these the job prints a note and exits 0.
 import webpush from "web-push";
-import { SPOTS, fetchForecasts, evaluate, laNow, riderSpots, deliver, GONE } from "./lib.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { SPOTS, scoring, fetchForecasts, evaluate, laNow, riderSpots, deliver, GONE } from "./lib.mjs";
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// obs-recent.json (the last few hourly station readings, for "Blowing now") and bias.json (per-spot forecast bias, Phase 5) are
+// committed by the observations job just before this one runs (the workflow checks out the branch tip, not the scheduled commit).
+// Either missing or unreadable: that rule is simply off this run.
+const readJSON = name => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, name), "utf8")); } catch (e) { console.log(`${name}: ${e.code === "ENOENT" ? "not there yet" : e.message}`); return null; } };
 
 const DRY = process.argv.includes("--dry-run");
 const URL_ = (process.env.SYNC_URL || "").replace(/\/+$/, ""), TOKEN = process.env.SYNC_ADMIN_TOKEN || "", PRIV = process.env.VAPID_PRIVATE_KEY || "";
@@ -30,14 +38,16 @@ if (!riders.length) { console.log("No rider has enabled notifications yet."); pr
 const union = new Map(SPOTS.map(s => [s.id, s]));
 for (const r of riders) for (const s of riderSpots(r.settings || {})) union.set(s.id, s);
 const forecasts = await fetchForecasts([...union.values()]);
-const now = laNow();
-console.log(`${riders.length} rider(s), ${Object.keys(forecasts).length} spot forecasts, ${now.date} ${now.hour}:00 Pacific${DRY ? " (dry run)" : ""}`);
+const now = laNow(); now.ms = Date.now();
+const recent = readJSON("obs-recent.json");
+scoring.setBias(readJSON("bias.json") || {});
+console.log(`${riders.length} rider(s), ${Object.keys(forecasts).length} spot forecasts, ${recent && recent.runs ? recent.runs.length : 0} recent station run(s), ${now.date} ${now.hour}:00 Pacific${DRY ? " (dry run)" : ""}`);
 
 let failures = 0;
 for (const rider of riders) {
   const tag = rider.id.slice(0, 8);
   let res;
-  try { res = evaluate(rider, forecasts, now); } catch (e) { console.error(`rider ${tag}: evaluation failed:`, e); failures++; continue; }
+  try { res = evaluate(rider, forecasts, now, recent); } catch (e) { console.error(`rider ${tag}: evaluation failed:`, e); failures++; continue; }
   if (!res.notification) { console.log(`rider ${tag}: ${res.why}`); continue; }
   console.log(`rider ${tag}: ${res.notification.body}`);
   if (DRY) continue;
