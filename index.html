@@ -653,7 +653,7 @@ function detail({spot,r,f}){
   const h0=+f.time[ci[0]].slice(11,13), xt=t=>pad+(t-h0)*bw+bw/2, xc=t=>Math.max(pad,Math.min(W-pad,xt(t)));   // decimal hour of the day -> x (bar k is centred on hour h0+k)
   const sun=sunHours(f,selDay);
   let svg=`<div class="striphead">${dayLong(selDay)}, hour by hour${td?` · tide at ${esc(td.station)}`:""}</div><svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="${dayLong(selDay)} hour by hour: wind for ${esc(spot.name)} in ${unitWord()}${sun?`, sunrise ${hm(sun[0])}, sunset ${hm(sun[1])}`:""}${td?`, tide at ${esc(td.station)} in feet`:""}">`;
-  // Night is a cool grey diagonal hatch (gate tokens), the best window a green tint with a thin green outline, so the two never read alike;
+  // Night is a cool grey diagonal hatch (gate tokens), the best window a plain green tint, so the two never read alike;
   // sunrise and sunset get a sun / moon marker with the time on the hour axis (U+FE0E keeps the sun a text glyph, not an emoji, on iOS).
   const pat=`night-${spot.id}`;
   svg+=`<defs><pattern id="${pat}" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--gate-bg)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--gate)" stroke-opacity=".45" stroke-width="1.2"/></pattern></defs>`;
@@ -663,21 +663,21 @@ function detail({spot,r,f}){
     if(xr>pad) svg+=`<rect x="${pad}" y="8" width="${(xr-pad).toFixed(1)}" height="${BASE-8}" fill="url(#${pat})"/>`;
     if(xs<W-pad) svg+=`<rect x="${xs.toFixed(1)}" y="8" width="${(W-pad-xs).toFixed(1)}" height="${BASE-8}" fill="url(#${pat})"/>`;
     for(const [x,t,glyph] of [[xr,sun[0],"\u2600\uFE0E"],[xs,sun[1],"\u263E"]]) if(x>pad&&x<W-pad){
-      const label=`${glyph} ${hm(t)}`, w=label.length*6.4, lx=Math.max(w/2+2,Math.min(W-w/2-2,x));
+      const label=`${glyph} ${hm(t)}`, w=label.length*7.6, lx=Math.max(w/2+2,Math.min(W-w/2-2,x));
       sunMarks.push([lx,w]);
-      svg+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="8" y2="${H-13}" stroke="var(--muted)" stroke-dasharray="2 3" stroke-width="1"/><text x="${lx.toFixed(1)}" y="${H-2}" font-size="10" font-weight="600" text-anchor="middle" fill="var(--fg)" font-family="var(--body)"><tspan font-size="12">${glyph}</tspan> ${hm(t)}</text>`;
+      svg+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="8" y2="${H-13}" stroke="var(--muted)" stroke-dasharray="2 3" stroke-width="1"/><text x="${lx.toFixed(1)}" y="${H-2}" font-size="12" font-weight="600" text-anchor="middle" fill="var(--fg)" font-family="var(--body)"><tspan font-size="13">${glyph}</tspan> ${hm(t)}</text>`;
     }
   }
   const ticks= settings.units==="mph"? [10,20,30,40].map(v=>v/KN2MPH) : [10,20,30];   // gridlines on round numbers in the unit shown
   ticks.forEach(v=>{ if(v<maxS) svg+=`<line x1="${pad}" x2="${W-pad}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pad-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="var(--muted)" font-family="var(--mono)">${wnum(v)}</text>`; });
   svg+=`<text x="${pad-4}" y="12" font-size="9" text-anchor="end" fill="var(--muted)" font-family="var(--body)">${unitName()}</text>`;
   const winStart=ci.findIndex(i=>+f.time[i].slice(11,13)===r.from);
-  if(winStart>=0) svg+=`<rect x="${(pad+winStart*bw).toFixed(1)}" y="8" width="${(bw*r.window).toFixed(1)}" height="${BASE-8}" fill="var(--good)" fill-opacity=".14" stroke="var(--good)" stroke-opacity=".8" stroke-width="1" rx="3"/>`;
+  if(winStart>=0) svg+=`<rect x="${(pad+winStart*bw).toFixed(1)}" y="8" width="${(bw*r.window).toFixed(1)}" height="${BASE-8}" fill="var(--good)" fill-opacity=".14" rx="3"/>`;
   ci.forEach((i,k)=>{ const x=scored[i]; const s=f.spd[i]||0,g=f.gst[i]||0,d=f.dir[i]; const col= x? `var(--${cls(x.v,x.gate)})` : "var(--gate)"; const cx=pad+k*bw+bw/2, op= x? "":' opacity=".45"';
     svg+=`<rect x="${pad+k*bw+2}" y="${y(s)}" width="${bw-4}" height="${y(0)-y(s)}" fill="${col}" rx="2"${op}/>`;
     svg+=`<line x1="${cx}" x2="${cx}" y1="${y(s)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5" opacity=".7"/><line x1="${cx-4}" x2="${cx+4}" y1="${y(g)}" y2="${y(g)}" stroke="${col}" stroke-width="1.5"${op}/>`;
     if(d!=null) svg+=`<g transform="translate(${cx},${H-18}) rotate(${d+180})"><path d="M0,-6 L4,4 L0,2 L-4,4 Z" fill="var(--muted)"/></g>`;
-    const hr=+f.time[i].slice(11,13); if((hr-h0)%3===0 && !sunMarks.some(([mx,w])=>Math.abs(cx-mx)<w/2+14)) svg+=`<text x="${cx}" y="${H-2}" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--mono)">${hhmm(hr)}</text>`;
+    const hr=+f.time[i].slice(11,13); if((hr-h0)%3===0 && !sunMarks.some(([mx,w])=>Math.abs(cx-mx)<w/2+14)) svg+=`<text x="${cx}" y="${H-2}" font-size="12" text-anchor="middle" fill="var(--muted)" font-family="var(--mono)">${hhmm(hr)}</text>`;
   });
   if(td){   // a light tide curve in a band under the bars, highs and lows labelled with their time and height; display only (SPEC §7)
     const yT=BASE+6, yB=BASE+TB-2, vs=td.pts.map(p=>p[1]), vlo=Math.min(...vs), vhi=Math.max(...vs), ty=v=>yB-3-((v-vlo)/((vhi-vlo)||1))*(yB-yT-16);
@@ -689,7 +689,7 @@ function detail({spot,r,f}){
         svg+=`<circle cx="${x.toFixed(1)}" cy="${ty(v).toFixed(1)}" r="2.5" fill="var(--accent)"/><text x="${lx.toFixed(1)}" y="${(ty(v)-5).toFixed(1)}" font-size="10" text-anchor="middle" fill="var(--fg)" font-family="var(--body)">${kind==="H"?"High":"Low"} ${hm(t)} · ${v.toFixed(1)} ft</text>`; }
     }
   }
-  svg+=`</svg><div class="legend" aria-hidden="true"><svg viewBox="0 0 16 10"><rect x=".5" y=".5" width="15" height="9" rx="2" fill="url(#${pat})" stroke="var(--line)"/></svg>night · <svg viewBox="0 0 16 10"><rect x=".5" y=".5" width="15" height="9" rx="2" fill="var(--good)" fill-opacity=".14" stroke="var(--good)" stroke-opacity=".8"/></svg>best window</div>`;
+  svg+=`</svg><div class="legend" aria-hidden="true"><svg viewBox="0 0 16 10"><rect x=".5" y=".5" width="15" height="9" rx="2" fill="url(#${pat})" stroke="var(--line)"/></svg>night · <svg viewBox="0 0 16 10"><rect x=".5" y=".5" width="15" height="9" rx="2" fill="var(--good)" fill-opacity=".14" stroke="var(--line)"/></svg>best window</div>`;
   const plain=(spd,gst,dir)=> spd==null? "–" : `${wn(spd)}${gst!=null&&gst>spd+1?` gusting ${wnum(gst)}`:""}${dir!=null?` from the ${compass(dir)}`:""}`;
   const kv=[];
   const raw=f;
