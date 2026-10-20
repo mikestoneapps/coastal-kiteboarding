@@ -423,9 +423,10 @@ try {
     assert(/hour by hour · tide at Garibaldi/i.test(coast), "coast detail: the chart is titled with its tide station: " + coast.split("\n")[0]);
     const labels = (svgC.match(/>(High|Low) \d{1,2}:\d\d[ap] · \d+\.\d ft</g) || []);
     assert(labels.length >= 2 && labels.some(l => /^>High/.test(l)) && labels.some(l => /^>Low/.test(l)), "high and low tide labelled with time and height: " + labels.join(" "));
-    assert((svgC.match(/opacity="\.07"/g) || []).length === 2 && /\>7:33a</.test(svgC) && /\>6:20p</.test(svgC), "night shaded before 7:33a and after 6:20p, with the times at the lines");
+    const legend = await text(page, "#detail-pacificcity .legend");
+    assert((svgC.match(/fill="url\(#night-pacificcity\)"/g) || []).length === 2 && /<pattern id="night-pacificcity"/.test(svgC) && /\u2600\uFE0E<\/tspan> 7:33a</.test(svgC) && /\u263E<\/tspan> 6:20p</.test(svgC) && /fill="var\(--good\)" fill-opacity="\.14" stroke="var\(--good\)"/.test(svgC) && legend.replace(/\s+/g, " ") === "night · best window", "night hatched before 7:33a and after 6:20p with sun / moon markers and the times on the hour axis, the best window green-outlined, a legend under the chart");
     assert(/viewBox="0 0 640 190"/.test(svgC) && (svgC.match(/stroke-dasharray/g) || []).length === 2, "the chart grew a 40 px tide band; sunrise and sunset lines");
-    const bars = await page.evaluate(() => [...document.querySelectorAll("#detail-pacificcity svg rect[rx='2']")].length);
+    const bars = await page.evaluate(() => [...document.querySelectorAll("#detail-pacificcity svg.strip rect[rx='2']")].length);
     assert(bars === 12, `12 bars: the scored 8a–5p slots plus one shaded hour each side (${bars})`);
     const hours = await page.evaluate(() => { const r = computeAll().find(x => x.spot.id === "pacificcity").r; return [r.from, r.to, r.idx.length]; });
     assert(hours[2] === 10 && hours[0] >= 8 && hours[1] <= 18, `scored hours follow the sun: 10 slots, window ${hours[0]}–${hours[1]} (never before 8a, never past the 5p slot)`);
@@ -435,7 +436,7 @@ try {
     await page.click("#homeLO"); await page.waitForTimeout(300);
     await page.click('button[data-open="stevenson"]'); await page.waitForSelector("#detail-stevenson svg");
     const gorge = await text(page, "#detail-stevenson"), svgG = await page.evaluate(() => document.querySelector("#detail-stevenson svg").outerHTML);
-    assert(!/tide at/i.test(gorge) && !/(High|Low) \d/.test(svgG) && /viewBox="0 0 640 150"/.test(svgG) && (svgG.match(/opacity="\.07"/g) || []).length === 2, "Gorge detail: no tide band or labels, chart at its usual height, night still shaded");
+    assert(!/tide at/i.test(gorge) && !/(High|Low) \d/.test(svgG) && /viewBox="0 0 640 150"/.test(svgG) && (svgG.match(/fill="url\(#night-stevenson\)"/g) || []).length === 2, "Gorge detail: no tide band or labels, chart at its usual height, night still hatched");
     assert((await page.locator("#detail-stevenson").boundingBox()).width <= 390 && (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390, "390 px: the open details fit the viewport, no horizontal scroll");
     if (SHOT) await page.screenshot({ path: SHOT + "/gorge-390.png", fullPage: true });
     assert(errors.length === 0, "tides: no page errors (" + errors.join(" | ") + ")");
