@@ -62,6 +62,7 @@ function mock(page, opts = {}) {
     log.push(u.split("?")[0] + (body ? " " + decodeURIComponent(body.replace(/^data=/, "")).slice(0, 200) : ""));
     if (/\/\/api\.open-meteo\.com/.test(u)) { const P = new URL(u).searchParams, n = (P.get("latitude") || "").split(",").length; log.push("models=" + P.get("models")); const a = (opts.forecast || forecastFor)(n); return a && a.status ? json({ error: true, reason: "test: rejected" }, a.status) : json(a); }
     if (/marine-api\.open-meteo\.com/.test(u)) { const n = (new URL(u).searchParams.get("latitude") || "").split(",").length; return json(F.marine(n)); }
+    if (/tidesandcurrents\.noaa\.gov/.test(u)) { if (opts.tides === "down") return json({ error: { message: "test: down" } }, 500); return json(F.tides(u)); }
     if (/overpass/.test(u)) { if (opts.overpass === "down") return json({}, 504); if (opts.overpass === "slow") await new Promise(r => setTimeout(r, 4000)); if (/surveillance/.test(body)) return json(F.OVERPASS_CAMS); if (/coastline/.test(body)) return json(F.OVERPASS_SHORE); return json({}, 400); }
     if (/commons\.wikimedia\.org/.test(u)) return json(F.COMMONS);
     if (/upload\.wikimedia\.org/.test(u)) return route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64") });
@@ -328,7 +329,7 @@ try {
     const dayOf = day => Math.round((Date.parse(day + "T12:00:00Z") - Date.parse(today + "T12:00:00Z")) / 864e5);
     // Within 1h30 of Lake Oswego only Stevenson (point 0) and Hood River (point 1) qualify. Today Stevenson blows (20g24, the freeride peak), Hood River is light (12);
     // tomorrow the reverse; the day after Stevenson again; the last two days both 18. W all week.
-    const byDay = n => F.openMeteo(n, (i, h, day) => { const d = dayOf(day); const s = i === 0 ? [20, 12, 20, 18, 18][d] : i === 1 ? [12, 20, 12, 18, 18][d] : 18; return { spd: s, gst: s + 4, dir: 270 }; });
+    const byDay = n => F.openMeteo(n, (i, h, day) => { const d = dayOf(day); const s = i === 0 ? [20, 12, 20, 18, 18, 18, 18][d] : i === 1 ? [12, 20, 12, 18, 18, 18, 18][d] : 18; return { spd: s, gst: s + 4, dir: 270 }; });
     // A fresh, trusted station 1.8 mi from Stevenson reading 5 kn against the 20 kn forecast: a disagreement, today only.
     const obs = { fetchedAt: new Date().toISOString(), obs: { stevenson: [{ id: "TEST1", name: "Test station", kind: "nws", dist_mi: 1.8, time: new Date(Date.now() - 10 * 60000).toISOString(), spd: 5, gst: 7, dir: 270 }] } };
     const { page, errors, ctx } = await newPage(browser, url, { forecast: byDay, obs });
@@ -375,22 +376,81 @@ try {
     assert(/Lead time\n2–3 days out: expect the window to shift an hour or two\./i.test(det) && new RegExp(`${short(2)} morning · 7a–10a`, "i").test(det), "two days out: '2–3 days out' lead line, rows labelled " + short(2));
     assert((await sortBtn("score").innerText()) === short(2) && (await sortBtn("tomorrow").innerText()) === short(3), `sort buttons read ${short(2)} / ${short(3)}`);
 
+    // seven day tabs; the last two are a trend
+    const tabs = await page.locator("#days button").allInnerTexts();
+    assert(tabs.length === 7 && tabs[0].startsWith("Today") && tabs[1].startsWith("Tomorrow") && tabs[2].startsWith(short(2)), `seven day tabs: ${tabs.map(t => t.replace(/\n/g, " ")).join(" / ")}`);
+    assert(/· trend$/.test(tabs[5]) && /· trend$/.test(tabs[6]) && !tabs.slice(0, 5).some(t => /trend/.test(t)), "days 6 and 7 are labelled 'trend' in the tab, the first five are not");
+    await page.click("#days button >> nth=4"); await page.waitForTimeout(300); await openFirst(); det = await detailOf();
+    assert(/Lead time\n4 days out: trust the pattern, not the hour\./i.test(det), "four days out: '4 days out' lead line");
     // the last forecast day
-    await page.click("#days button >> nth=4"); await page.waitForTimeout(300);
-    assert((await sortBtn("score").innerText()) === short(4) && (await sortBtn("tomorrow").isHidden()) && (await sortBtn("distance").isVisible()), `last day: first button reads ${short(4)}, the second is hidden, Distance stays`);
+    await page.click("#days button >> nth=6"); await page.waitForTimeout(300);
+    assert((await sortBtn("score").innerText()) === short(6) && (await sortBtn("tomorrow").isHidden()) && (await sortBtn("distance").isVisible()), `last day: first button reads ${short(6)}, the second is hidden, Distance stays`);
     assert((await sortBtn("score").getAttribute("aria-pressed")) === "true" && (await page.evaluate(() => JSON.parse(localStorage.getItem("goc.settings")).sort)) === "tomorrow", "with no next day the day sort is pressed; the stored key is untouched");
-    assert(!new RegExp(`\\b(${short(0)}|${short(1)}|${short(2)}|${short(3)}|${short(4)}|${short(5)}) \\d+\\.\\d`).test(await text(page, "#list")), "no next-day score chips on the last day");
+    assert(!new RegExp(`\\b(${[0, 1, 2, 3, 4, 5, 6, 7].map(short).join("|")}) \\d+\\.\\d`).test(await text(page, "#list")), "no next-day score chips on the last day");
     await openFirst(); det = await detailOf();
-    assert(/Lead time\n4–5 days out: trust the pattern, not the hour\./i.test(det) && new RegExp(`^${long(4)}, hour by hour`, "i").test(det), "last day: '4–5 days out' lead line, chart titled with the day");
-    assert(new RegExp(`^\\d+\\.\\d\nBest bet · ${short(4)} · within 1h30\n`, "i").test(await text(page, "#hero")), "hero format holds on the last day");
+    assert(/Lead time\n5–6 days out: a trend, not a forecast\./i.test(det) && new RegExp(`^${long(6)}, hour by hour`, "i").test(det), "last day: the trend lead line, chart titled with the day");
+    assert(new RegExp(`^\\d+\\.\\d\nBest bet · ${short(6)} · within 1h30\n`, "i").test(await text(page, "#hero")), "hero format holds on the last day");
     // nothing qualifies: same hero layout
     await page.evaluate(() => { settings.radius = 30; render(); }); await page.waitForTimeout(200);
     const heroN = await text(page, "#hero");
-    assert(new RegExp(`^–\nBest bet · ${short(4)} · within 30 min\nNothing worth the drive\n(Further out: Stevenson scores \\d+\\.\\d at 1h05\\.|No spot in the forecast scores above 4 on ${long(4)}\\.)`, "i").test(heroN), "nothing in range: same layout (score slot, label, name, line), 'Nothing worth the drive': " + heroN.split("\n").slice(0, 4).join(" | "));
+    assert(new RegExp(`^–\nBest bet · ${short(6)} · within 30 min\nNothing worth the drive\n(Further out: Stevenson scores \\d+\\.\\d at 1h05\\.|No spot in the forecast scores above 4 on ${long(6)}\\.)`, "i").test(heroN), "nothing in range: same layout (score slot, label, name, line), 'Nothing worth the drive': " + heroN.split("\n").slice(0, 4).join(" | "));
+    // a dead selected day never points the hero at a trend day: today dead, Rufus 6+ only on day 6
+    await page.evaluate(() => { settings.radius = 90; render(); });
+    const trendOnly = await page.evaluate(() => { const T = forecasts.rufus.time; const keep = { ...forecasts }; for (const id of Object.keys(forecasts)) { const f = forecasts[id]; forecasts[id] = { ...f, spd: f.spd.map(() => 3), gst: f.gst.map(() => 4) }; } forecasts.rufus = { ...forecasts.rufus, spd: T.map(t => t.startsWith(dayKeys[5]) ? 20 : 3), gst: T.map(t => t.startsWith(dayKeys[5]) ? 24 : 4) }; selDay = dayKeys[0]; render(); const h = document.getElementById("hero").textContent; Object.assign(forecasts, keep); return h; });
+    assert(/Nothing worth the drive/.test(trendOnly) && !/looks like the day/.test(trendOnly), "a 6+ on a trend day alone does not become the 'looks like the day' card");
+    await page.evaluate(() => { selDay = dayKeys[6]; settings.radius = 30; render(); }); await page.waitForTimeout(100);
     await page.click("#days button >> nth=0"); await page.waitForTimeout(300);
     assert((await sortBtn("tomorrow").isVisible()) && (await sortBtn("tomorrow").innerText()) === short(1) && (await sortBtn("tomorrow").getAttribute("aria-pressed")) === "true", "back on today the second button returns, labelled " + short(1) + ", pressed again since the stored sort is still 'tomorrow'");
     assert(errors.length === 0, "selected day: no page errors (" + errors.join(" | ") + ")");
     await ctx.close();
+  }
+
+  /* ---------- 1e. tides and daylight at 390 px: a coast spot (Pacific City) and a Gorge spot (Stevenson) open ---------- */
+  {
+    const SHOT = process.env.SHOT_DIR || "";
+    const { page, errors, log, ctx } = await newPage(browser, url, { width: 390, init: () => { localStorage.setItem("goc.settings", JSON.stringify({ home: "BC", radius: 60, v: 2 })); } });
+    await page.waitForSelector(".row", { timeout: 20000 });
+    await page.waitForFunction(() => { try { return !!JSON.parse(localStorage.getItem("goc.tides") || "null"); } catch (e) { return false; } }, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const tideCalls = log.filter(l => /tidesandcurrents/.test(l));
+    const stations = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("goc.tides")).stations).sort());
+    assert(tideCalls.length === 6 && JSON.stringify(stations) === JSON.stringify(["9435380", "9437540", "9439011"]) && (await page.evaluate(() => JSON.parse(localStorage.getItem("goc.tides")).day)) === new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }), `the eleven coast spots share three tide stations: one hourly + one hilo call each (${tideCalls.length} calls), cached under goc.tides for today`);
+    assert(log.findIndex(l => /tidesandcurrents/.test(l)) > log.findIndex(l => /api\.open-meteo/.test(l)), "tides are fetched after the forecast, never before it");
+    await page.click('button[data-open="pacificcity"]'); await page.waitForSelector("#detail-pacificcity svg");
+    const coast = await text(page, "#detail-pacificcity");
+    const svgC = await page.evaluate(() => document.querySelector("#detail-pacificcity svg").outerHTML);
+    assert(/hour by hour · tide at Garibaldi/i.test(coast), "coast detail: the chart is titled with its tide station: " + coast.split("\n")[0]);
+    const labels = (svgC.match(/>(High|Low) \d{1,2}:\d\d[ap] · \d+\.\d ft</g) || []);
+    assert(labels.length >= 2 && labels.some(l => /^>High/.test(l)) && labels.some(l => /^>Low/.test(l)), "high and low tide labelled with time and height: " + labels.join(" "));
+    assert((svgC.match(/opacity="\.07"/g) || []).length === 2 && /\>7:33a</.test(svgC) && /\>6:20p</.test(svgC), "night shaded before 7:33a and after 6:20p, with the times at the lines");
+    assert(/viewBox="0 0 640 190"/.test(svgC) && (svgC.match(/stroke-dasharray/g) || []).length === 2, "the chart grew a 40 px tide band; sunrise and sunset lines");
+    const bars = await page.evaluate(() => [...document.querySelectorAll("#detail-pacificcity svg rect[rx='2']")].length);
+    assert(bars === 12, `12 bars: the scored 8a–5p slots plus one shaded hour each side (${bars})`);
+    const hours = await page.evaluate(() => { const r = computeAll().find(x => x.spot.id === "pacificcity").r; return [r.from, r.to, r.idx.length]; });
+    assert(hours[2] === 10 && hours[0] >= 8 && hours[1] <= 18, `scored hours follow the sun: 10 slots, window ${hours[0]}–${hours[1]} (never before 8a, never past the 5p slot)`);
+    assert(!/Tide/.test(coast.split("\n").slice(1).join("\n")) || !/kv/.test(coast), "tide is drawn, not scored: no tide tile, no tide reason");
+    if (SHOT) await page.screenshot({ path: SHOT + "/coast-390.png", fullPage: true });
+    // the Gorge spot: no tide station, same chart otherwise
+    await page.click("#homeLO"); await page.waitForTimeout(300);
+    await page.click('button[data-open="stevenson"]'); await page.waitForSelector("#detail-stevenson svg");
+    const gorge = await text(page, "#detail-stevenson"), svgG = await page.evaluate(() => document.querySelector("#detail-stevenson svg").outerHTML);
+    assert(!/tide at/i.test(gorge) && !/(High|Low) \d/.test(svgG) && /viewBox="0 0 640 150"/.test(svgG) && (svgG.match(/opacity="\.07"/g) || []).length === 2, "Gorge detail: no tide band or labels, chart at its usual height, night still shaded");
+    assert((await page.locator("#detail-stevenson").boundingBox()).width <= 390 && (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390, "390 px: the open details fit the viewport, no horizontal scroll");
+    if (SHOT) await page.screenshot({ path: SHOT + "/gorge-390.png", fullPage: true });
+    assert(errors.length === 0, "tides: no page errors (" + errors.join(" | ") + ")");
+    // reload: the cached predictions are used, no new NOAA call
+    const n0 = log.filter(l => /tidesandcurrents/.test(l)).length;
+    await page.reload(); await page.waitForSelector(".row", { timeout: 20000 }); await page.waitForTimeout(800);
+    assert(log.filter(l => /tidesandcurrents/.test(l)).length === n0, "reload: today's tide predictions come from localStorage, no new NOAA call");
+    await ctx.close();
+    // NOAA down: scores and chart as before, no errors
+    const down = await newPage(browser, url, { width: 390, tides: "down", init: () => { localStorage.setItem("goc.settings", JSON.stringify({ home: "BC", radius: 60, v: 2 })); } });
+    await down.page.waitForSelector(".row", { timeout: 20000 }); await down.page.waitForTimeout(800);
+    await down.page.click('button[data-open="pacificcity"]'); await down.page.waitForSelector("#detail-pacificcity svg");
+    const svgD = await down.page.evaluate(() => document.querySelector("#detail-pacificcity svg").outerHTML);
+    assert(!/tide at/i.test(await text(down.page, "#detail-pacificcity")) && /viewBox="0 0 640 150"/.test(svgD) && (await down.page.evaluate(() => localStorage.getItem("goc.tides"))) === null, "NOAA down: the detail renders without the tide band and nothing is cached");
+    assert(down.errors.length === 0, "NOAA down: no page errors (" + down.errors.join(" | ") + ")");
+    await down.ctx.close();
   }
 
   /* ---------- 2. away mode by place name ---------- */

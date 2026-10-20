@@ -5,7 +5,7 @@
 // Env: SYNC_URL (the Worker), SYNC_ADMIN_TOKEN (its ADMIN_TOKEN secret), VAPID_PRIVATE_KEY. The public
 // key is read from the Worker's /v1/push/vapid. Missing any of these the job prints a note and exits 0.
 import webpush from "web-push";
-import { SPOTS, fetchForecasts, evaluate, laNow, riderSpots } from "./lib.mjs";
+import { SPOTS, fetchForecasts, evaluate, laNow, riderSpots, deliver, GONE } from "./lib.mjs";
 
 const DRY = process.argv.includes("--dry-run");
 const URL_ = (process.env.SYNC_URL || "").replace(/\/+$/, ""), TOKEN = process.env.SYNC_ADMIN_TOKEN || "", PRIV = process.env.VAPID_PRIVATE_KEY || "";
@@ -41,17 +41,13 @@ for (const rider of riders) {
   if (!res.notification) { console.log(`rider ${tag}: ${res.why}`); continue; }
   console.log(`rider ${tag}: ${res.notification.body}`);
   if (DRY) continue;
-  const keep = []; let delivered = 0;
-  for (const sub of rider.subs) {
-    try { await webpush.sendNotification(sub, JSON.stringify(res.notification), { TTL: 6 * 3600, urgency: "normal" }); keep.push(sub); delivered++; }
-    catch (e) {
-      if (e.statusCode === 404 || e.statusCode === 410) { console.log(`rider ${tag}: dropping expired subscription`); continue; }
-      console.error(`rider ${tag}: push failed (${e.statusCode || e.message})`); keep.push(sub); failures++;
-    }
-  }
-  // The "already alerted" state is only advanced when at least one device got the digest, so a push
-  // outage is retried next hour instead of silently swallowing the alert.
-  try { await api("/v1/admin/riders/" + rider.id, "PUT", delivered ? { subs: keep, state: res.state } : { subs: keep }); }
+  // Every device's push status goes back to the Worker (PUT {pushed}); it deletes the subscriptions the push service reports gone (404/410)
+  // and leaves the rest alone, so a device that subscribed meanwhile is never overwritten. The "already alerted" state is only
+  // advanced when at least one device got the digest, so a push outage is retried next hour instead of silently swallowing the alert.
+  const d = await deliver(rider.subs, res.notification, (sub, payload) => webpush.sendNotification(sub, payload, { TTL: 6 * 3600, urgency: "normal" }));
+  for (const p of d.pushed) { if (GONE.has(p.status)) console.log(`rider ${tag}: subscription gone (${p.status}), asking the sync service to drop it`); else if (p.status >= 400 || !p.status) console.error(`rider ${tag}: push failed (${p.status || p.error})`); }
+  failures += d.failures;
+  try { await api("/v1/admin/riders/" + rider.id, "PUT", d.delivered ? { pushed: d.pushed, state: res.state } : { pushed: d.pushed }); }
   catch (e) { console.error(`rider ${tag}: could not save alert state:`, e.message); failures++; }
 }
 process.exit(failures ? 1 : 0);

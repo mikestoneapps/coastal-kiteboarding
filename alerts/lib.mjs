@@ -10,7 +10,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const scoring = require(path.join(ROOT, "scoring.js"));
 export const SPOTS = require(path.join(ROOT, "spots.json"));
 
-export const TZ = "America/Los_Angeles", DAYS = 5;
+export const TZ = "America/Los_Angeles", DAYS = 7;   // seven forecast days, like the page
+export const ALERT_DAYS = 5;   // alerts only ever cover the first five forecast days: days 6–7 are a trend (the page labels them so and applies the same cap to its preview)
 export const HOMES = { LO: { name: "Lake Oswego", key: "driveLO" }, BC: { name: "Pacific City", key: "driveBC" } };
 export const DEFAULT_WEIGHTS = scoring.DEFAULT_WEIGHTS;
 export const DEFAULT_ALERTS = { minScore: 8, maxDrive: 180, days: [0, 1, 2, 3, 4, 5, 6], hour: 19, lead: 3, cap: 1, confidence: true, sameDay: true, quietFrom: 21, quietTo: 7, email: true };
@@ -44,9 +45,11 @@ async function getJSON(url, tries = 4) {
 }
 // Open-Meteo model ids -> f.m keys, as in the page. best match, ECMWF and NBM feed the score (hourly median, scoring.consensus; NBM alone at the Gorge spots); GFS and ICON only vote on confidence.
 export const MODEL_IDS = { bm: "best_match", ecmwf: "ecmwf_ifs025", nbm: "ncep_nbm_conus", gfs: "gfs_seamless", icon: "icon_seamless" };
+// daily sunrise/sunset -> f.sun = {"YYYY-MM-DD":[riseISO,setISO]}: the hours the score looks at (scoring.daylightIdx). With several models the API may suffix the daily keys; any copy will do.
+export function sunOf(d) { const D = d && d.daily; if (!D || !Array.isArray(D.time)) return undefined; const pick = n => D[n] || D[n + "_best_match"] || D[Object.keys(D).find(k => k.startsWith(n + "_")) || ""]; const R = pick("sunrise"), S = pick("sunset"); if (!R || !S) return undefined; const o = {}; D.time.forEach((day, i) => { if (R[i] && S[i]) o[day] = [R[i], S[i]]; }); return Object.keys(o).length ? o : undefined; }
 export async function fetchForecasts(spots, fetchJSON = getJSON) {
   const lat = spots.map(s => s.lat).join(","), lon = spots.map(s => s.lon).join(",");
-  const query = models => `latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&models=${models}&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  const query = models => `latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,precipitation_probability,weather_code,visibility&daily=sunrise,sunset&models=${models}&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=${DAYS}&timezone=${encodeURIComponent(TZ)}`;
   let w;
   try { w = await fetchJSON("https://api.open-meteo.com/v1/forecast?" + query(Object.values(MODEL_IDS).join(","))); }
   catch (e) { console.warn("five-model forecast call failed, retrying with three:", e.message); w = await fetchJSON("https://api.open-meteo.com/v1/forecast?" + query("best_match,gfs_seamless,icon_seamless")); }
@@ -57,7 +60,7 @@ export async function fetchForecasts(spots, fetchJSON = getJSON) {
     const d = arr[i]; if (!d || !d.hourly) return; const h = d.hourly;
     const col = (n, m = "best_match") => h[`${n}_${m}`] || h[n] || new Array(h.time.length).fill(null);
     const m = {}; for (const [k, id] of Object.entries(MODEL_IDS)) { if (k !== "bm" && !h[`wind_speed_10m_${id}`]) continue; m[k] = { spd: rnd(col("wind_speed_10m", id)), gst: rnd(col("wind_gusts_10m", id)), dir: rnd(col("wind_direction_10m", id), 0) }; }
-    docs[s.id] = scoring.consensus({ spotId: s.id, fetchedAt: now, time: h.time, spd: rnd(col("wind_speed_10m")), gst: rnd(col("wind_gusts_10m")), dir: rnd(col("wind_direction_10m"), 0), temp: rnd(col("temperature_2m"), 0), pop: rnd(col("precipitation_probability"), 0), code: col("weather_code"), vis: rnd(col("visibility"), 0), m }, s.model);   // a Gorge spot scores on NBM (spots.json `model`), the rest on the median
+    docs[s.id] = scoring.consensus({ spotId: s.id, fetchedAt: now, time: h.time, spd: rnd(col("wind_speed_10m")), gst: rnd(col("wind_gusts_10m")), dir: rnd(col("wind_direction_10m"), 0), temp: rnd(col("temperature_2m"), 0), pop: rnd(col("precipitation_probability"), 0), code: col("weather_code"), vis: rnd(col("visibility"), 0), m, sun: sunOf(d) }, s.model);   // a Gorge spot scores on NBM (spots.json `model`), the rest on the median
   });
   const wave = spots.filter(s => s.waves && docs[s.id]);
   if (wave.length) {
@@ -89,7 +92,7 @@ export function evaluate(rider, forecasts, now) {
   const weights = { ...DEFAULT_WEIGHTS, ...(S.weights || {}) };
   const limitsOf = id => scoring.limitsFor({ comfort: S.comfort, overrides: S.overrides }, id);
   const spots = riderSpots(S);
-  const dayKeys = dayKeysOf(forecasts).filter(d => d >= now.date);
+  const dayKeys = dayKeysOf(forecasts).filter(d => d >= now.date).slice(0, ALERT_DAYS);   // never days 6–7: a trend is not something to clear a calendar for
   const state = { alerted: { ...((rider.state && rider.state.alerted) || {}) }, sent: { ...((rider.state && rider.state.sent) || {}) } };
   // prune state for days that have passed
   for (const k of Object.keys(state.alerted)) if (k.split("|")[1] < now.date) delete state.alerted[k];
@@ -101,7 +104,7 @@ export function evaluate(rider, forecasts, now) {
   const cand = {};   // "spot|day" -> {spot, d, r}
   for (const hk of Object.keys(HOMES)) {
     const hits = [];
-    dayKeys.slice(0, A.lead + 1).forEach((d, di) => {
+    dayKeys.slice(0, Math.min(A.lead + 1, ALERT_DAYS)).forEach((d, di) => {
       if (di === 0 && !A.sameDay) return;
       if (!A.days.includes(new Date(d + "T12:00:00Z").getUTCDay())) return;
       const rows = spots.map(spot => { const drive = spot[HOMES[hk].key]; if (drive == null || drive > A.maxDrive) return null; const r = score(spot, d); return r ? { spot, r, drive } : null; })
@@ -144,4 +147,21 @@ export function evaluate(rider, forecasts, now) {
   state.sent[now.date] = (state.sent[now.date] || 0) + 1;
   out.notification = { title: "Bistué Boarding", body: parts.join(" "), url: "./#day=" + firstDay, tag: "bb-" + now.date };
   return out;
+}
+
+/* ---------- delivery ---------- */
+// Send one notification to every device of a rider. Returns what the Worker needs to keep its subscription list clean:
+//   pushed:    [{endpoint, status}] for every device (status 201 or the push service's code; 404/410 = the subscription is gone, the Worker deletes it)
+//   delivered: how many devices accepted it (the "already alerted" state is only advanced when that is > 0)
+//   failures:  devices that failed for any other reason (a job exit code concern, not a subscription one)
+// `send(sub, payload)` is web-push's sendNotification in the job and a stub in the tests.
+export const GONE = new Set([404, 410]);
+export async function deliver(subs, notification, send) {
+  const payload = JSON.stringify(notification), pushed = [];
+  let delivered = 0, failures = 0;
+  for (const sub of subs || []) {
+    try { const r = await send(sub, payload); pushed.push({ endpoint: sub.endpoint, status: (r && r.statusCode) || 201 }); delivered++; }
+    catch (e) { const status = +(e && e.statusCode) || 0; pushed.push({ endpoint: sub.endpoint, status, error: status ? undefined : String(e && e.message || e).slice(0, 120) }); if (!GONE.has(status)) failures++; }
+  }
+  return { pushed, delivered, failures };
 }

@@ -93,19 +93,41 @@ export const NOMINATIM = [
   { place_id: 2, lat: "32.7157", lon: "-117.1611", display_name: "San Diego, CA, USA" },
 ];
 
-// One Open-Meteo multi-location answer for `n` points, `days` days, built from a per-hour function. Shape as the page parses it.
-export function openMeteo(n, fn = () => ({}), days = 5, start = new Date()) {
+// One Open-Meteo multi-location answer for `n` points, `days` days (seven, like the page asks for), built from a per-hour function. Shape as the page parses it,
+// including daily sunrise/sunset suffixed per model the way a multi-model answer comes back (07:33 / 18:20 Pacific: the scored hours are then the 8a..5p slots).
+export const SUNRISE = "07:33", SUNSET = "18:20";
+export function openMeteo(n, fn = () => ({}), days = 7, start = new Date()) {
   const d0 = start.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const time = []; for (let d = 0; d < days; d++) { const day = new Date(new Date(d0 + "T12:00:00Z").getTime() + d * 864e5).toISOString().slice(0, 10); for (let h = 0; h < 24; h++) time.push(`${day}T${String(h).padStart(2, "0")}:00`); }
   const loc = (i) => {
     const hourly = { time }; const cols = { wind_speed_10m: [], wind_gusts_10m: [], wind_direction_10m: [], temperature_2m: [], precipitation_probability: [], weather_code: [], visibility: [] };
     time.forEach((t, k) => { const v = { spd: 18, gst: 22, dir: 270, temp: 66, pop: 5, code: 1, vis: 24000, ...fn(i, +t.slice(11, 13), t.slice(0, 10), k) }; cols.wind_speed_10m.push(v.spd); cols.wind_gusts_10m.push(v.gst); cols.wind_direction_10m.push(v.dir); cols.temperature_2m.push(v.temp); cols.precipitation_probability.push(v.pop); cols.weather_code.push(v.code); cols.visibility.push(v.vis); });
     for (const [k, a] of Object.entries(cols)) for (const m of ["best_match", "gfs_seamless", "icon_seamless", "ecmwf_ifs025", "ncep_nbm_conus"]) hourly[k + "_" + m] = m === "best_match" ? a : a.map(x => x == null ? null : x);
-    return { latitude: 0, longitude: 0, hourly, current: { time: time[12], wind_speed_10m_best_match: 15, wind_gusts_10m_best_match: 19, wind_direction_10m_best_match: 270, temperature_2m_best_match: 64, weather_code_best_match: 1 } };
+    const dayList = [...new Set(time.map(t => t.slice(0, 10)))], daily = { time: dayList };
+    for (const m of ["best_match", "gfs_seamless", "icon_seamless", "ecmwf_ifs025", "ncep_nbm_conus"]) { daily["sunrise_" + m] = dayList.map(d => `${d}T${SUNRISE}`); daily["sunset_" + m] = dayList.map(d => `${d}T${SUNSET}`); }
+    return { latitude: 0, longitude: 0, hourly, daily, current: { time: time[12], wind_speed_10m_best_match: 15, wind_gusts_10m_best_match: 19, wind_direction_10m_best_match: 270, temperature_2m_best_match: 64, weather_code_best_match: 1 } };
   };
   return Array.from({ length: n }, (_, i) => loc(i));
 }
-export function marine(n, days = 5, start = new Date()) {
+export function marine(n, days = 7, start = new Date()) {
   const base = openMeteo(1, () => ({}), days, start)[0].hourly.time;
   return Array.from({ length: n }, () => ({ hourly: { time: base, wave_height: base.map(() => 1.0), wave_period: base.map(() => 11), wave_direction: base.map(() => 280), swell_wave_height: base.map(() => 0.8), swell_wave_period: base.map(() => 12) } }));
+}
+
+// NOAA CO-OPS tide predictions (api.tidesandcurrents.noaa.gov datagetter, product=predictions, time_zone=lst_ldt, units=english) for the
+// query the page sends: interval=h gives one row per hour, interval=hilo the highs and lows with their exact minute. A 12.42 h sine
+// around 4.5 ft (range 0.5–8.5), so each day has two highs and two lows; `station` offsets the phase so the three stations differ.
+export function tides(params) {
+  const P = typeof params === "string" ? new URL(params).searchParams : params;
+  const begin = String(P.get("begin_date") || ""), range = +(P.get("range") || 24), station = String(P.get("station") || "0");
+  const d0 = `${begin.slice(0, 4)}-${begin.slice(4, 6)}-${begin.slice(6, 8)}`;
+  const phase = (+station.slice(-2) % 12) / 12 * 2 * Math.PI, T = 12.42, A = 4, mid = 4.5;
+  const level = h => mid + A * Math.sin(2 * Math.PI * h / T + phase);
+  const stamp = h => { const d = new Date(Date.parse(d0 + "T00:00:00Z") + Math.round(h * 60) * 60000); return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`; };
+  if (P.get("interval") === "hilo") {
+    const out = [];
+    for (let k = 0; ; k++) { const peak = (Math.PI / 2 - phase) / (2 * Math.PI) * T + k * T / 2; if (peak >= range) break; if (peak >= 0) out.push({ t: stamp(peak), v: level(peak).toFixed(3), type: level(peak) > mid ? "H" : "L" }); }
+    return { predictions: out };
+  }
+  return { predictions: Array.from({ length: range + 1 }, (_, h) => ({ t: stamp(h), v: level(h).toFixed(3) })) };
 }
