@@ -425,7 +425,7 @@ try {
     assert(labels.length >= 2 && labels.some(l => /^>High/.test(l)) && labels.some(l => /^>Low/.test(l)), "high and low tide labelled with time and height: " + labels.join(" "));
     const legend = await text(page, "#detail-pacificcity .legend");
     assert((svgC.match(/fill="url\(#night-pacificcity\)"/g) || []).length === 2 && /<pattern id="night-pacificcity"/.test(svgC) && /\u2600\uFE0E<\/tspan> 7:33a</.test(svgC) && /\u263E<\/tspan> 6:20p</.test(svgC) && /fill="var\(--good\)" fill-opacity="\.14" rx="3">/.test(svgC) && legend.replace(/\s+/g, " ") === "night · best window", "night hatched before 7:33a and after 6:20p with sun / moon markers and the times on the hour axis, the best window a green tint, a legend under the chart");
-    assert(/viewBox="0 0 640 190"/.test(svgC) && (svgC.match(/stroke-dasharray/g) || []).length === 2, "the chart grew a 40 px tide band; sunrise and sunset lines");
+    assert(/viewBox="0 0 400 193"/.test(svgC) && (svgC.match(/stroke-dasharray/g) || []).length === 2, "the chart grew a 48-unit tide band; sunrise and sunset lines");
     const bars = await page.evaluate(() => [...document.querySelectorAll("#detail-pacificcity svg.strip rect[rx='2']")].length);
     assert(bars === 12, `12 bars: the scored 8a–5p slots plus one shaded hour each side (${bars})`);
     const hours = await page.evaluate(() => { const r = computeAll().find(x => x.spot.id === "pacificcity").r; return [r.from, r.to, r.idx.length]; });
@@ -436,7 +436,7 @@ try {
     await page.click("#homeLO"); await page.waitForTimeout(300);
     await page.click('button[data-open="stevenson"]'); await page.waitForSelector("#detail-stevenson svg");
     const gorge = await text(page, "#detail-stevenson"), svgG = await page.evaluate(() => document.querySelector("#detail-stevenson svg").outerHTML);
-    assert(!/tide at/i.test(gorge) && !/(High|Low) \d/.test(svgG) && /viewBox="0 0 640 150"/.test(svgG) && (svgG.match(/fill="url\(#night-stevenson\)"/g) || []).length === 2, "Gorge detail: no tide band or labels, chart at its usual height, night still hatched");
+    assert(!/tide at/i.test(gorge) && !/(High|Low) \d/.test(svgG) && /viewBox="0 0 400 145"/.test(svgG) && (svgG.match(/fill="url\(#night-stevenson\)"/g) || []).length === 2, "Gorge detail: no tide band or labels, chart at its usual height, night still hatched");
     assert((await page.locator("#detail-stevenson").boundingBox()).width <= 390 && (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390, "390 px: the open details fit the viewport, no horizontal scroll");
     if (SHOT) await page.screenshot({ path: SHOT + "/gorge-390.png", fullPage: true });
     assert(errors.length === 0, "tides: no page errors (" + errors.join(" | ") + ")");
@@ -450,7 +450,7 @@ try {
     await down.page.waitForSelector(".row", { timeout: 20000 }); await down.page.waitForTimeout(800);
     await down.page.click('button[data-open="pacificcity"]'); await down.page.waitForSelector("#detail-pacificcity svg");
     const svgD = await down.page.evaluate(() => document.querySelector("#detail-pacificcity svg").outerHTML);
-    assert(!/tide at/i.test(await text(down.page, "#detail-pacificcity")) && /viewBox="0 0 640 150"/.test(svgD) && (await down.page.evaluate(() => localStorage.getItem("goc.tides"))) === null, "NOAA down: the detail renders without the tide band and nothing is cached");
+    assert(!/tide at/i.test(await text(down.page, "#detail-pacificcity")) && /viewBox="0 0 400 145"/.test(svgD) && (await down.page.evaluate(() => localStorage.getItem("goc.tides"))) === null, "NOAA down: the detail renders without the tide band and nothing is cached");
     assert(down.errors.length === 0, "NOAA down: no page errors (" + down.errors.join(" | ") + ")");
     await down.ctx.close();
   }
